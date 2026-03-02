@@ -1,6 +1,7 @@
 {
   "name": "vulkan-game-engine-tutorial",
   "version": "1.0.0",
+  "builtin-baseline": "96fb8cef5522c747f34006fc5c34a0bf6a4b4d28",
   "dependencies": [
     {
       "name": "glfw3",
@@ -10,7 +11,9 @@
     "openal-soft",
     {
       "name": "ktx",
-      "features": [ "vulkan" ]
+      "features": [
+        "vulkan"
+      ]
     },
     "tinygltf",
     "nlohmann-json"
