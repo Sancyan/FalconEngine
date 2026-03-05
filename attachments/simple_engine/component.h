@@ -33,10 +33,20 @@ class Entity;
  */
 class Component
 {
+	public: 
+		enum class State {
+			Uninitialized,
+			Initializing,
+			Active,
+			Destroying,
+			Destroyed
+		};
+
   protected:
 	Entity     *owner = nullptr;
 	std::string name;
 	bool        active = true;
+	State       state  = State::Uninitialized;
 
   public:
 	/**
@@ -50,14 +60,38 @@ class Component
 	/**
 	 * @brief Virtual destructor for proper cleanup.
 	 */
-	virtual ~Component() = default;
+	virtual ~Component()
+	{
+		if (state != State::Destroyed) {
+			OnDestroy();
+			state = State::Destroyed;
+		}
+	}
 
 	/**
 	 * @brief Initialize the component.
 	 * Called when the component is added to an entity.
 	 */
 	virtual void Initialize()
-	{}
+	{
+		if (state == State::Uninitialized) {
+			state = State::Initializing;
+			OnInitialize();
+			state = State::Active;
+		}
+	}
+
+	virtual void Destroy()
+	{
+		if (state == State::Active) {
+			state = State::Destroying;
+			OnDestroy();
+			state = State::Destroyed;
+		}
+	}
+
+	virtual void OnInitiliaze() {}
+	virtual void OnDestroy() {}
 
 	/**
 	 * @brief Update the component.
@@ -107,7 +141,7 @@ class Component
 	 */
 	bool IsActive() const
 	{
-		return active;
+		return state == State::Active;
 	}
 
 	/**
@@ -118,4 +152,6 @@ class Component
 	{
 		active = isActive;
 	}
+
+	friend class Entity;
 };
