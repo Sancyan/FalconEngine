@@ -19,6 +19,23 @@
 #include <chrono>
 #include <string>
 
+//Component type ID System
+class ComponentTypeIDSystem
+{
+  private:
+	static size_t nextTypeID;
+
+	public:
+		template<typename T>
+		static size_t GetTypeID()
+		{
+		    static size_t typeID = nextTypeID++;
+		    return typeID;
+	  }
+};
+
+size_t ComponentTypeIDSystem::nextTypeID = 0;
+
 // Forward declaration
 class Entity;
 
@@ -38,6 +55,7 @@ class Component
 			Uninitialized,
 			Initializing,
 			Active,
+			Inactive,
 			Destroying,
 			Destroyed
 		};
@@ -45,7 +63,7 @@ class Component
   protected:
 	Entity     *owner = nullptr;
 	std::string name;
-	bool        active = true;
+	//bool        active = true;
 	State       state  = State::Uninitialized;
 
   public:
@@ -66,6 +84,12 @@ class Component
 			OnDestroy();
 			state = State::Destroyed;
 		}
+	}
+
+	template<typename T>
+	static size_t GetTypeID()
+	{
+		return ComponentTypeIDSystem::GetTypeID<T>();
 	}
 
 	/**
@@ -90,7 +114,7 @@ class Component
 		}
 	}
 
-	virtual void OnInitiliaze() {}
+	virtual void OnInitialize() {}
 	virtual void OnDestroy() {}
 
 	/**
@@ -148,9 +172,9 @@ class Component
 	 * @brief Set the active state of the component.
 	 * @param isActive The new active state.
 	 */
-	void SetActive(bool isActive)
+	void toggleActive()
 	{
-		active = isActive;
+		state = (state == State::Active) ? State::Inactive : State::Active;
 	}
 
 	friend class Entity;

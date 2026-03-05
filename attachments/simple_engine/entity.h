@@ -22,6 +22,7 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+#include<unordered_map>
 
 #include "component.h"
 
@@ -37,6 +38,7 @@ class Entity
 	std::string                             name;
 	bool                                    active = true;
 	std::vector<std::unique_ptr<Component>> components;
+	std::unordered_map<size_t, Component *> componentMap;
 
   public:
 	/**
@@ -107,12 +109,25 @@ class Entity
 	{
 		static_assert(std::is_base_of<Component, T>::value, "T must derive from Component");
 
-		// Create the component
+		//Create new type ID
+		size_t typeID = Component::GetTypeID<T>();
+
+
+		//Check if component of Type T already exists
+		auto it = componentMap.find(typeID);
+		if (it != componentMap.end())
+		{
+			return static_cast<T *>(it->second);
+		}
+
+		// Create new component
 		auto component    = std::make_unique<T>(std::forward<Args>(args)...);
 		T   *componentPtr = component.get();
 
 		// Set the owner
 		componentPtr->SetOwner(this);
+		//Add component* to map
+		componentMap[typeID] = componentPtr;
 
 		// Add to the vector for ownership and iteration
 		components.push_back(std::move(component));
@@ -133,14 +148,15 @@ class Entity
 	{
 		static_assert(std::is_base_of<Component, T>::value, "T must derive from Component");
 
-		// Search from the back to preserve previous behavior of returning the last-added component of type T
-		for (auto it = components.rbegin(); it != components.rend(); ++it)
+		size_t typeID = Component::GetTypeID<T>();
+		auto   it     = componentMap.find(typeID);
+
+		if (it != componentMap.end())
 		{
-			if (auto *casted = dynamic_cast<T *>(it->get()))
-			{
-				return casted;
-			}
+			return static_cast<T *>(it->second);
+		
 		}
+
 		return nullptr;
 	}
 
@@ -154,15 +170,24 @@ class Entity
 	{
 		static_assert(std::is_base_of<Component, T>::value, "T must derive from Component");
 
-		for (auto it = components.rbegin(); it != components.rend(); ++it)
-		{
-			if (dynamic_cast<T *>(it->get()) != nullptr)
-			{
-				components.erase(std::next(it).base());
-				return true;
-			}
-		}
+		size_t typeID = Component::GetTypeID<T>();
+		auto   it     = componentMap.find(typeID);
 
+		if (it != componentMap.end())
+		{
+			Component *componentPtr = it->second;
+			componentMap.erase(it);
+
+			for (auto compIt = components.begin(); compIt != components.end(); ++compIt)
+			{
+				if (compIt->get() == componentPtr)
+				{
+					components.erase(compIt);
+					return true;
+				}
+			}
+		
+		}
 		return false;
 	}
 
