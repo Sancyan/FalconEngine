@@ -127,7 +127,7 @@ endfunction()
 
 function (add_chapter CHAPTER_NAME)
   cmake_parse_arguments (CHAPTER "" "SHADER" "LIBS;TEXTURES;MODELS" ${ARGN})
-  add_executable (${CHAPTER_NAME} ${CHAPTER_NAME}.cpp "simple_engine/renderer_rendergraph.h")
+  add_executable (${CHAPTER_NAME} ${CHAPTER_NAME}.cpp "simple_engine/renderer_rendergraph.h" "simple_engine/event_system.h")
   set_target_properties (${CHAPTER_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CHAPTER_NAME})
   set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_STANDARD 20)

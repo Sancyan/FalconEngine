@@ -349,11 +349,13 @@ class RenderGraph
 		  }
 	  }
 
+	  
+
 	  private:
 	  uint32_t FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties)
 	  {
 		  // Implementation to find suitable memory type
-		  // ...
+		  // TODO: ...
 		  return 0;        // Placeholder
 	  }
 
