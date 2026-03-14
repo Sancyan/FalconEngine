@@ -23,7 +23,7 @@
 class ComponentTypeIDSystem
 {
   private:
-	static size_t nextTypeID;
+	static inline size_t nextTypeID = 0;
 
 	public:
 		template<typename T>
@@ -34,10 +34,11 @@ class ComponentTypeIDSystem
 	  }
 };
 
-size_t ComponentTypeIDSystem::nextTypeID = 0;
+//size_t ComponentTypeIDSystem::nextTypeID = 0;
 
 // Forward declaration
 class Entity;
+class ComponentTypeIDSystem;
 
 /**
  * @brief Base class for all components in the engine.
@@ -178,4 +179,5 @@ class Component
 	}
 
 	friend class Entity;
+	friend class ComponentTypeIDSystem;
 };

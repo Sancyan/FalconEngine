@@ -2,7 +2,6 @@
 #include <math.h>
 #include <string>
 #include <functional>
-#include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
 #include "resource_manager.h"
 
