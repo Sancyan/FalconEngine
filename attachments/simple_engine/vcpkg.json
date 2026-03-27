@@ -16,6 +16,7 @@
       ]
     },
     "tinygltf",
-    "nlohmann-json"
+    "nlohmann-json",
+    "meshoptimizer"
   ]
 }

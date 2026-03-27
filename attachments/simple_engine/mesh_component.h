@@ -26,6 +26,7 @@
 #include <vulkan/vulkan.hpp>
 
 #include "component.h"
+#include "meshoptimizer.h"
 
 /**
  * @brief Structure representing per-instance data for instanced rendering.
