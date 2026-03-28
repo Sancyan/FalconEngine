@@ -270,6 +270,59 @@ struct Vertex {
   }
 };
 
+struct meshletDescription
+{
+	uint32_t vertexOffset;
+	uint32_t vertexCount;
+	uint32_t triangleOffset;
+	uint32_t triangleCount;
+
+    float boundingSphere[4];
+	int8_t coneApex[3];
+	int8_t coneAxis[3];
+	int8_t coneCutoff;
+};
+
+ struct alignas(16) GpuMeshlet
+{
+	glm::vec3 center;
+	float   radius;
+
+	int8_t cone_axis[3];
+	int8_t cone_cutoff;
+
+	uint32_t data_offset;
+	uint32_t mesh_index;
+	int8_t   vertex_count;
+	int8_t   triangle_count;
+};        // struct GpuMeshlet
+//
+////
+////
+//struct MeshletToMeshIndex
+//{
+//	u32 mesh_index;
+//	u32 primitive_index;
+//};        // struct MeshletToMeshIndex
+//
+////
+////
+//struct GpuMeshletVertexPosition
+//{
+//	float position[3];
+//	float padding;
+//};        // struct GpuMeshletVertexPosition
+//
+////
+////
+//struct GpuMeshletVertexData
+//{
+//	u8    normal[4];
+//	u8    tangent[4];
+//	u16   uv_coords[2];
+//	float padding;
+//};        // struct GpuMeshletVertexData
+
 /**
  * @brief Component that handles the mesh data for rendering.
  */
@@ -277,6 +330,11 @@ class MeshComponent final : public Component {
   private:
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
+
+    std::vector<GpuMeshlet> final_gpu_meshlets;
+	uint32_t                   meshlet_offset;
+	uint32_t                   meshlet_count;
+	uint32_t                   meshlet_index_count;
 
     // Cached local-space AABB (encompassing all instances)
     glm::vec3 localAABBMin{0.0f};
@@ -428,6 +486,88 @@ class MeshComponent final : public Component {
 	 * @param model Pointer to the model to load from.
 	 */
     void LoadFromModel(const class Model* model);
+
+    void generateMeshlets(const std::vector<uint32_t>& indices, const std::vector<Vertex>& vertices )
+    {
+		const size_t max_vertices = 64;
+		const size_t max_triangles = 124;
+		const float  cone_weight   = 0.0f;
+
+        const size_t max_meshlets = meshopt_buildMeshletsBound(indices.size(), max_vertices, max_triangles);
+
+        std::vector<meshopt_Meshlet> local_meshlets(max_meshlets);
+		std::vector<unsigned int>    meshlet_vertices(max_meshlets * max_vertices);
+		std::vector<unsigned char>   meshlet_triangles(max_meshlets * max_triangles * 3);
+
+        size_t meshlet_count = meshopt_buildMeshlets(
+		    local_meshlets.data(),
+		    meshlet_vertices.data(),
+		    meshlet_triangles.data(),
+		    indices.data(),
+		    indices.size(),
+		    &vertices[0].position.x,
+		    vertices.size(),
+		    sizeof(Vertex),
+		    max_vertices,
+		    max_triangles,
+		    cone_weight
+		);
+
+
+        const meshopt_Meshlet &last = local_meshlets[meshlet_count - 1];
+
+        meshlet_vertices.resize(last.vertex_offset + last.vertex_count);
+		meshlet_triangles.reserve(last.triangle_offset + last.triangle_count * 3);
+        local_meshlets.resize(meshlet_count);
+
+        // --- MESHLET CHECK LOGGING ---
+		
+
+        //TODO: Meshlet Normal and tangent packing
+
+
+        //Build and optimize meshlet bounds.
+        for (uint32_t m = 0; m < meshlet_count; ++m)
+		{
+			meshopt_Meshlet &local_meshlet = local_meshlets[m];
+
+            meshopt_optimizeMeshlet(
+			    &meshlet_vertices[local_meshlet.vertex_offset],
+			    &meshlet_triangles[local_meshlet.triangle_offset],
+			    local_meshlet.triangle_count,
+			    local_meshlet.vertex_count);
+
+            meshopt_Bounds bounds = meshopt_computeMeshletBounds(
+			    &meshlet_vertices[local_meshlet.vertex_offset],
+			    &meshlet_triangles[local_meshlet.triangle_offset],
+			    local_meshlet.triangle_count,
+			    &vertices[0].position.x,
+			    vertices.size(),
+			    sizeof(Vertex)
+			);
+
+            GpuMeshlet meshlet{};
+			meshlet.data_offset = 0;//TODO
+			meshlet.vertex_count = local_meshlet.vertex_count;
+			meshlet.triangle_count = local_meshlet.triangle_count;
+
+			meshlet.center         = glm::vec3(bounds.center[0], bounds.center[1], bounds.center[2]);
+			meshlet.radius         = bounds.radius;
+
+            meshlet.cone_axis[0] = bounds.cone_axis_s8[0];
+			meshlet.cone_axis[1] = bounds.cone_axis_s8[1];
+			meshlet.cone_axis[2] = bounds.cone_axis_s8[2];
+
+            meshlet.cone_cutoff = bounds.cone_cutoff_s8;
+			meshlet.mesh_index  = 0;//TODO
+
+            final_gpu_meshlets.push_back(meshlet);
+        }
+
+
+
+
+    }
 
     // Instancing methods
 
