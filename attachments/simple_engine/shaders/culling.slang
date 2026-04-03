@@ -1,97 +1,102 @@
 //Culling Math Helpers
 
-
-bool coneCull(vec3 center, float radius, vec3 cone_axis, float cone_cutoff, vec3 camera_position)
+bool coneCull(float3 center, float radius, float3 cone_axis, float cone_cutoff, float3 camera_position)
 {
     return dot(center - camera_position, cone_axis) >= cone_cutoff * length(center - camera_position) + radius;
 }
 
-bool sphere_intersect( vec3 center_a, float radius_a, vec3 center_b, float radius_b ) {
-	const vec3 v = center_b - center_a;
+bool sphere_intersect(float3 center_a, float radius_a, float3 center_b, float radius_b) {
+    const float3 v = center_b - center_a;
 	const float total_radius = radius_a + radius_b;
 
 	return dot(v, v) < total_radius;
 }
 
 // 2D Polyhedral Bounds of a Clipped, Perspective-Projected 3D Sphere. Michael Mara, Morgan McGuire. 2013
-bool project_sphere(vec3 C, float r, float znear, float P00, float P11, out vec4 aabb) {
+bool project_sphere(float3 C, float r, float znear, float P00, float P11, out float4 aabb) {
 	if (C.z - r < znear)
 		return false;
 
-	vec2 cx = vec2(C.x, C.z);
-	vec2 vx = vec2(sqrt(dot(cx, cx) - r * r), r);
-	vec2 minx = mat2(vx.x, vx.y, -vx.y, vx.x) * cx;
-	vec2 maxx = mat2(vx.x, -vx.y, vx.y, vx.x) * cx;
+    float2 cx = float2(C.x, C.z);
+    float2 vx = float2(sqrt(dot(cx, cx) - r * r), r);
+    float2 minx = mul(float2x2(vx.x, vx.y, -vx.y, vx.x), cx);
+    // Old
+    // float2 minx = float2x2(vx.x, vx.y, -vx.y, vx.x) * cx;
+    float2 maxx = mul(float2x2(vx.x, -vx.y, vx.y, vx.x), cx);
+    //Old
+    //float2 maxx = mat2(vx.x, -vx.y, vx.y, vx.x) * cx;
 
-	vec2 cy = vec2(-C.y, C.z);
-	vec2 vy = vec2(sqrt(dot(cy, cy) - r * r), r);
-	vec2 miny = mat2(vy.x, vy.y, -vy.y, vy.x) * cy;
-	vec2 maxy = mat2(vy.x, -vy.y, vy.y, vy.x) * cy;
+    float2 cy = float2(-C.y, C.z);
+    float2 vy = float2(sqrt(dot(cy, cy) - r * r), r);
+    float2 miny = mul(float2x2(vy.x, vy.y, -vy.y, vy.x), cy);
+    // float2 miny = mat2(vy.x, vy.y, -vy.y, vy.x) * cy;
+    float2 maxy = mul(float2x2(vy.x, -vy.y, vy.y, vy.x), cy);
+	//float2 maxy = mat2(vy.x, -vy.y, vy.y, vy.x) * cy;
 
-	aabb = vec4(minx.x / minx.y * P00, miny.x / miny.y * P11, maxx.x / maxx.y * P00, maxy.x / maxy.y * P11);
-	aabb = aabb.xwzy * vec4(0.5f, -0.5f, 0.5f, -0.5f) + vec4(0.5f); // clip space -> uv space
+	aabb = float4(minx.x / minx.y * P00, miny.x / miny.y * P11, maxx.x / maxx.y * P00, maxy.x / maxy.y * P11);
+	aabb = aabb.xwzy * float4(0.5f, -0.5f, 0.5f, -0.5f) + float4(0.5f); // clip space -> uv space
 
 	return true;
 }
 
-bool occlusion_cull( vec3 view_bounding_center, float radius, float z_near, float projection_00, float projection_11,
-	                 uint depth_pyramid_texture_index, vec3 world_bounding_center, vec3 camera_world_position,
-	                 mat4 culling_view_projection ) {
+//bool occlusion_cull( float3 view_bounding_center, float radius, float z_near, float projection_00, float projection_11,
+//	                 uint depth_pyramid_texture_index, float3 world_bounding_center, float3 camera_world_position,
+//	                 float4x4 culling_view_projection ) {
 
-	vec4 aabb;
-	bool occlusion_visible = true;
-	if ( project_sphere(view_bounding_center, radius, z_near, projection_00, projection_11, aabb ) ) {
-		// TODO: improve
-		ivec2 depth_pyramid_size = textureSize(global_textures[nonuniformEXT(depth_pyramid_texture_index)], 0);
-		float width = (aabb.z - aabb.x) * depth_pyramid_size.x;
-		float height = (aabb.w - aabb.y) * depth_pyramid_size.y;
+//	float4 aabb;
+//	bool occlusion_visible = true;
+//	if ( project_sphere(view_bounding_center, radius, z_near, projection_00, projection_11, aabb ) ) {
+//		// TODO: improve
+//		ifloat2 depth_pyramid_size = textureSize(global_textures[nonuniformEXT(depth_pyramid_texture_index)], 0);
+//		float width = (aabb.z - aabb.x) * depth_pyramid_size.x;
+//		float height = (aabb.w - aabb.y) * depth_pyramid_size.y;
 
-		float level = floor(log2(max(width, height)));
+//		float level = floor(log2(max(width, height)));
 
-		// Sampler is set up to do max reduction, so this computes the minimum depth of a 2x2 texel quad
-		vec2 uv = (aabb.xy + aabb.zw) * 0.5;
-    	uv.y = 1 - uv.y;
+//		// Sampler is set up to do max reduction, so this computes the minimum depth of a 2x2 texel quad
+//		float2 uv = (aabb.xy + aabb.zw) * 0.5;
+//    	uv.y = 1 - uv.y;
 		
-		float depth = textureLod(global_textures[nonuniformEXT(depth_pyramid_texture_index)], uv, level).r;
-		// Sample also 4 corners
-    	depth = max(depth, textureLod(global_textures[nonuniformEXT(depth_pyramid_texture_index)], vec2(aabb.x, 1.0f - aabb.y), level).r);
-    	depth = max(depth, textureLod(global_textures[nonuniformEXT(depth_pyramid_texture_index)], vec2(aabb.z, 1.0f - aabb.w), level).r);
-    	depth = max(depth, textureLod(global_textures[nonuniformEXT(depth_pyramid_texture_index)], vec2(aabb.x, 1.0f - aabb.w), level).r);
-    	depth = max(depth, textureLod(global_textures[nonuniformEXT(depth_pyramid_texture_index)], vec2(aabb.z, 1.0f - aabb.y), level).r);
+//		float depth = textureLod(global_textures[nonuniformEXT(depth_pyramid_texture_index)], uv, level).r;
+//		// Sample also 4 corners
+//    	depth = max(depth, textureLod(global_textures[nonuniformEXT(depth_pyramid_texture_index)], float2(aabb.x, 1.0f - aabb.y), level).r);
+//    	depth = max(depth, textureLod(global_textures[nonuniformEXT(depth_pyramid_texture_index)], float2(aabb.z, 1.0f - aabb.w), level).r);
+//    	depth = max(depth, textureLod(global_textures[nonuniformEXT(depth_pyramid_texture_index)], float2(aabb.x, 1.0f - aabb.w), level).r);
+//    	depth = max(depth, textureLod(global_textures[nonuniformEXT(depth_pyramid_texture_index)], float2(aabb.z, 1.0f - aabb.y), level).r);
 
-    	//vec3 camera_world_position = freeze_occlusion_camera() ? camera_position.xyz : camera_position_debug.xyz;
-		vec3 dir = normalize(camera_world_position - world_bounding_center.xyz);
-		//vec4 sceen_space_center_last = early_late_flag == 0 ? previous_view_projection * vec4(world_bounding_center + dir * radius, 1.0) : view_projection * vec4(world_bounding_center + dir * radius, 1.0);
-		vec4 sceen_space_center_last = culling_view_projection * vec4(world_bounding_center + dir * radius, 1.0);
+//    	//float3 camera_world_position = freeze_occlusion_camera() ? camera_position.xyz : camera_position_debug.xyz;
+//		float3 dir = normalize(camera_world_position - world_bounding_center.xyz);
+//		//float4 sceen_space_center_last = early_late_flag == 0 ? previous_view_projection * float4(world_bounding_center + dir * radius, 1.0) : view_projection * float4(world_bounding_center + dir * radius, 1.0);
+//		float4 sceen_space_center_last = culling_view_projection * float4(world_bounding_center + dir * radius, 1.0);
 
-		float depth_sphere = sceen_space_center_last.z / sceen_space_center_last.w;
+//		float depth_sphere = sceen_space_center_last.z / sceen_space_center_last.w;
 
-		occlusion_visible = (depth_sphere <= depth);
+//		occlusion_visible = (depth_sphere <= depth);
 
-		// Debug: write world space calculated bounds.
-        // vec2 uv_center = (aabb.xy + aabb.zw) * 0.5;
-        // vec4 sspos = vec4(uv_center * 2 - 1, depth, 1);
-        // vec4 aabb_world = inverse_view_projection * sspos;
-        // aabb_world.xyz /= aabb_world.w;
+//		// Debug: write world space calculated bounds.
+//        // float2 uv_center = (aabb.xy + aabb.zw) * 0.5;
+//        // float4 sspos = float4(uv_center * 2 - 1, depth, 1);
+//        // float4 aabb_world = inverse_view_projection * sspos;
+//        // aabb_world.xyz /= aabb_world.w;
 
-        //debug_draw_box( world_center.xyz - vec3(radius), world_center.xyz + vec3(radius), vec4(1,1,1,0.5));
-        //debug_draw_box( aabb_world.xyz - vec3(radius * 1.1), aabb_world.xyz + vec3(radius * 1.1), vec4(0,depth_sphere - depth,1,0.5));
+//        //debug_draw_box( world_center.xyz - float3(radius), world_center.xyz + float3(radius), float4(1,1,1,0.5));
+//        //debug_draw_box( aabb_world.xyz - float3(radius * 1.1), aabb_world.xyz + float3(radius * 1.1), float4(0,depth_sphere - depth,1,0.5));
 
-		//debug_draw_2d_box(aabb.xy * 2.0 - 1, aabb.zw * 2 - 1, occlusion_visible ? vec4(0,1,0,1) : vec4(1,0,0,1));
-	}
+//		//debug_draw_2d_box(aabb.xy * 2.0 - 1, aabb.zw * 2 - 1, occlusion_visible ? float4(0,1,0,1) : float4(1,0,0,1));
+//	}
 
-	return occlusion_visible;
-}
+//	return occlusion_visible;
+//}
 
-uint get_cube_face_mask( vec3 cube_map_pos, vec3 aabb_min, vec3 aabb_max ) {
+uint get_cube_face_mask( float3 cube_map_pos, float3 aabb_min, float3 aabb_max ) {
 
-    vec3 plane_normals[] = { vec3(-1, 1, 0), vec3(1, 1, 0), vec3(1, 0, 1), vec3(1, 0, -1), vec3(0, 1, 1), vec3(0, -1, 1) };
-    vec3 abs_plane_normals[] = { vec3(1, 1, 0), vec3(1, 1, 0), vec3(1, 0, 1), vec3(1, 0, 1), vec3(0, 1, 1), vec3(0, 1, 1) };
+    float3 plane_normals[] = { float3(-1, 1, 0), float3(1, 1, 0), float3(1, 0, 1), float3(1, 0, -1), float3(0, 1, 1), float3(0, -1, 1) };
+    float3 abs_plane_normals[] = { float3(1, 1, 0), float3(1, 1, 0), float3(1, 0, 1), float3(1, 0, 1), float3(0, 1, 1), float3(0, 1, 1) };
 
-    vec3 aabb_center = (aabb_min + aabb_max) * 0.5f;
+    float3 aabb_center = (aabb_min + aabb_max) * 0.5f;
 
-    vec3 center = aabb_center - cube_map_pos;
-    vec3 extents = (aabb_max - aabb_min) * 0.5f;
+    float3 center = aabb_center - cube_map_pos;
+    float3 extents = (aabb_max - aabb_min) * 0.5f;
 
     bool rp[ 6 ];
     bool rn[ 6 ];
