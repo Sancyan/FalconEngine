@@ -32,4 +32,14 @@ attachments/simple_engine/android/gradlew
 attachments/simple_engine/android/gradlew.bat
 /attachments/out/build/x64-Debug
 /.vs
-/attachments/simple_engine
+
+/attachments/simple_engine/.vs/CMake Overview
+/attachments/simple_engine/.vs/cmake.db
+/attachments/simple_engine/.vs/ProjectSettings.json
+/attachments/simple_engine/.vs/simple_engine/config
+/attachments/simple_engine/.vs/simple_engine/FileContentIndex
+/attachments/simple_engine/.vs/simple_engine/v17
+/attachments/simple_engine/.vs/slnx.sqlite
+/attachments/simple_engine/.vs/VSWorkspaceState.json
+/attachments/simple_engine/out/build/Assets
+/attachments/simple_engine/out/build/x64-Debug

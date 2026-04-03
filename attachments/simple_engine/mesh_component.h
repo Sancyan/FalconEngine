@@ -285,6 +285,7 @@ struct meshletDescription
 
  struct alignas(16) GpuMeshlet
 {
+     //Not sure if should use glm or make new vec3 type. 
 	glm::vec3 center;
 	float   radius;
 
