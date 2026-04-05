@@ -151,7 +151,7 @@ set(SOURCES_COMMON
     descriptor_manager.cpp
     renderdoc_debug_system.cpp
     mikktspace.c
-)
+ "vk_mem_alloc.cpp")
 
 set(SOURCES_DESKTOP
         main.cpp
@@ -163,7 +163,7 @@ if (ANDROID)
     add_library(SimpleEngine STATIC ${SOURCES_COMMON})
 else ()
     # Desktop: build the runnable executable (unchanged behavior vs `HEAD`).
-    add_executable(SimpleEngine ${SOURCES_COMMON} ${SOURCES_DESKTOP})
+    add_executable(SimpleEngine ${SOURCES_COMMON} ${SOURCES_DESKTOP} "vk_mem_alloc.cpp")
 endif ()
 
 add_dependencies(SimpleEngine shaders)
