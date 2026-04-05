@@ -20,7 +20,8 @@
 #include <numeric>
 #include <vulkan/vulkan.hpp>
 
-MemoryPool::MemoryPool(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice) : device(device), physicalDevice(physicalDevice) {
+MemoryPool::MemoryPool(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, const vk::raii::Instance& vkInstance) 
+    : device(device), physicalDevice(physicalDevice), instance(vkInstance) {
 }
 
 MemoryPool::~MemoryPool() {
@@ -30,63 +31,78 @@ MemoryPool::~MemoryPool() {
 }
 
 bool MemoryPool::initialize() {
-  std::lock_guard lock(poolMutex);
+	VmaAllocatorCreateInfo allocatorInfo = {};
+	allocatorInfo.vulkanApiVersion       = VK_API_VERSION_1_3;
+	allocatorInfo.physicalDevice         = *physicalDevice;
+	allocatorInfo.device                 = *device;
+	allocatorInfo.instance               = *instance;
 
-  try {
-    // Configure default pool settings based on typical usage patterns
+	allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
 
-    // Vertex buffer pool: Large allocations, device-local (increased for large models like bistro)
-    configurePool(
-      PoolType::VERTEX_BUFFER,
-      128 * 1024 * 1024,
-      // 128MB blocks (doubled)
-      4096,
-      // 4KB allocation units
-      vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-    // Index buffer pool: Medium allocations, device-local (increased for large models like bistro)
-    configurePool(
-      PoolType::INDEX_BUFFER,
-      64 * 1024 * 1024,
-      // 64MB blocks (doubled)
-      2048,
-      // 2KB allocation units
-      vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-    // Uniform buffer pool: Small allocations, host-visible
-    // Use 64-byte alignment to match nonCoherentAtomSize and prevent validation errors
-    configurePool(
-      PoolType::UNIFORM_BUFFER,
-      4 * 1024 * 1024,
-      // 4MB blocks
-      64,
-      // 64B allocation units (aligned to nonCoherentAtomSize)
-      vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-
-    // Staging buffer pool: Variable allocations, host-visible
-    // Use 64-byte alignment to match nonCoherentAtomSize and prevent validation errors
-    configurePool(
-      PoolType::STAGING_BUFFER,
-      16 * 1024 * 1024,
-      // 16MB blocks
-      64,
-      // 64B allocation units (aligned to nonCoherentAtomSize)
-      vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-
-    // Texture image pool: Use moderate block sizes to reduce allocation failures on mid-range GPUs
-    configurePool(
-      PoolType::TEXTURE_IMAGE,
-      64 * 1024 * 1024,
-      // 64MB blocks (smaller blocks reduce contiguous allocation pressure)
-      4096,
-      // 4KB allocation units
-      vk::MemoryPropertyFlagBits::eDeviceLocal);
+    if (vmaCreateAllocator(&allocatorInfo, &allocator) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create VMA Alloc!");
+		return false;
+	}
 
     return true;
-  } catch (const std::exception& e) {
-    std::cerr << "Failed to initialize memory pool: " << e.what() << std::endl;
-    return false;
-  }
+  //std::lock_guard lock(poolMutex);
+
+  //try {
+  //  // Configure default pool settings based on typical usage patterns
+
+  //  // Vertex buffer pool: Large allocations, device-local (increased for large models like bistro)
+  //  configurePool(
+  //    PoolType::VERTEX_BUFFER,
+  //    128 * 1024 * 1024,
+  //    // 128MB blocks (doubled)
+  //    4096,
+  //    // 4KB allocation units
+  //    vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+  //  // Index buffer pool: Medium allocations, device-local (increased for large models like bistro)
+  //  configurePool(
+  //    PoolType::INDEX_BUFFER,
+  //    64 * 1024 * 1024,
+  //    // 64MB blocks (doubled)
+  //    2048,
+  //    // 2KB allocation units
+  //    vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+  //  // Uniform buffer pool: Small allocations, host-visible
+  //  // Use 64-byte alignment to match nonCoherentAtomSize and prevent validation errors
+  //  configurePool(
+  //    PoolType::UNIFORM_BUFFER,
+  //    4 * 1024 * 1024,
+  //    // 4MB blocks
+  //    64,
+  //    // 64B allocation units (aligned to nonCoherentAtomSize)
+  //    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+  //  // Staging buffer pool: Variable allocations, host-visible
+  //  // Use 64-byte alignment to match nonCoherentAtomSize and prevent validation errors
+  //  configurePool(
+  //    PoolType::STAGING_BUFFER,
+  //    16 * 1024 * 1024,
+  //    // 16MB blocks
+  //    64,
+  //    // 64B allocation units (aligned to nonCoherentAtomSize)
+  //    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+  //  // Texture image pool: Use moderate block sizes to reduce allocation failures on mid-range GPUs
+  //  configurePool(
+  //    PoolType::TEXTURE_IMAGE,
+  //    64 * 1024 * 1024,
+  //    // 64MB blocks (smaller blocks reduce contiguous allocation pressure)
+  //    4096,
+  //    // 4KB allocation units
+  //    vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+  //  return true;
+  //} catch (const std::exception& e) {
+  //  std::cerr << "Failed to initialize memory pool: " << e.what() << std::endl;
+  //  return false;
+  //}
 }
 
 void MemoryPool::configurePool(
