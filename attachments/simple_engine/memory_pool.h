@@ -23,7 +23,6 @@
 #include <utility>
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
-#include "vma/vk_mem_alloc.h"
 
 /**
  * @brief Memory pool allocator for Vulkan resources
@@ -52,10 +51,6 @@ class MemoryPool
 	 */
 	struct Allocation
 	{
-		VmaAllocation      vmaAllocation;
-		VmaAllocationInfo2 info;
-
-
 		vk::DeviceMemory memory;                 // The underlying device memory
 		vk::DeviceSize   offset;                 // Offset within the memory block
 		vk::DeviceSize   size;                   // Size of the allocation
