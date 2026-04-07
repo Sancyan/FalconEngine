@@ -38,12 +38,6 @@ class MemoryPool
 	/**
 	 * @brief Types of memory pools based on usage patterns
 	 */
-
-
-	//Global VMA allocator
-	VmaAllocator allocator = nullptr;
-
-
 	enum class PoolType
 	{
 		VERTEX_BUFFER,         // Device-local memory for vertex data
@@ -58,14 +52,8 @@ class MemoryPool
 	 */
 	struct Allocation
 	{
-		VkDeviceMemory     memory;
 		VmaAllocation      vmaAllocation;
-		VmaAllocationInfo info;
-
-		void* getMappedData() const
-		{
-			return info.pMappedData;
-		}
+		VmaAllocationInfo2 info;
 
 
 		vk::DeviceMemory memory;                 // The underlying device memory
@@ -94,7 +82,6 @@ class MemoryPool
   private:
 	const vk::raii::Device            &device;
 	const vk::raii::PhysicalDevice    &physicalDevice;
-	const vk::raii::Instance          &instance;
 	vk::PhysicalDeviceMemoryProperties memPropsCache{};
 
 	// Pool configurations
@@ -128,7 +115,7 @@ class MemoryPool
 	 * @param device Vulkan device
 	 * @param physicalDevice Vulkan physical device
 	 */
-	MemoryPool(const vk::raii::Device &device, const vk::raii::PhysicalDevice &physicalDevice, const vk::raii::Instance &vkInstance);
+	MemoryPool(const vk::raii::Device &device, const vk::raii::PhysicalDevice &physicalDevice);
 
 	/**
 	 * @brief Destructor

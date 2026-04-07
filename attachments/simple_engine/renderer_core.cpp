@@ -164,7 +164,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
 
   // Initialize memory pool for efficient memory management
   try {
-    memoryPool = std::make_unique<MemoryPool>(device, physicalDevice, instance);
+    memoryPool = std::make_unique<MemoryPool>(device, physicalDevice);
     if (!memoryPool->initialize()) {
       std::cerr << "Failed to initialize memory pool" << std::endl;
       return false;
