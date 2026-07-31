@@ -151,7 +151,7 @@ set(SOURCES_COMMON
     descriptor_manager.cpp
     renderdoc_debug_system.cpp
     mikktspace.c
-)
+ "SkyAtmosphereCommon.cpp")
 
 set(SOURCES_DESKTOP
         main.cpp
