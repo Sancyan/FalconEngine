@@ -28,7 +28,7 @@ typedef float Radiance;
 typedef float SpectralPower;
 typedef float SpectralIrradiance;
 typedef float SpectralRadiance;
-typedef float SpectralRadianceDenisty;
+typedef float SpectralRadianceDensity;
 typedef float ScatteringCoefficient;
 typedef float InverseSolidAngle;
 typedef float LuminousIntensity;
@@ -85,7 +85,74 @@ typedef Sampler3D ScatteringTexture 		   ;
 typedef Sampler3D ScatteringDensityTexture 	   ;
 typedef Sampler2D IrradianceTexture 		   ;
 
+#ifdef D_UNREAL_ENGINE_4
+
+float PI = 3.1415926535897932384626433832795f;
+                                                                   ;
+float m = 1.0f                                                     ;
+float nm = 1.0f                                                    ;
+float rad = 1.0f                                                   ;
+float sr = 1.0f                                                    ;
+float watt = 1.0f                                                  ;
+float lm  =1.0f                                                    ;
+float                                                              ;
+float km  =(1000.0 * m)                                            ;
+float m2  =(m * m)                                                 ;
+float m3  =(m * m * m)                                             ;
+float pi  = (PI * rad)                                             ;
+float deg  = (pi / 180.0f)                                         ;
+float watt_per_square_meter  = (watt / m2)                         ;
+float watt_per_square_meter_per_sr  = (watt / (m2 * sr))           ;
+float watt_per_square_meter_per_nm = (watt / (m2 * nm))            ;
+float watt_per_square_meter_per_sr_per_nm = (watt / (m2 * sr * nm));
+float watt_per_cubic_meter_per_sr_per_nm = (watt / (m3 * sr * nm));
+float cd = (lm / sr)                                              ;
+float kcd = (1000.0 * cd)                                         ;
+float cd_per_square_meter = (cd / m2)                             ;
+float kcd_per_square_meter  = (kcd / m2)                          ;
+                                                                  
+#else
+
+/*
+<h3>Physical units</h3>
+
+<p>We can then define the units for our six base physical quantities:
+meter (m), nanometer (nm), radian (rad), steradian (sr), watt (watt) and lumen
+(lm):
+*/
+
+static const Length m = 1.0;
+static const Wavelength nm = 1.0;
+static const Angle rad = 1.0;
+static const SolidAngle sr = 1.0;
+static const Power watt = 1.0;
+static const LuminousPower lm = 1.0;
+
+/*
+<p>From which we can derive the units for some derived physical quantities,
+as well as some derived units (kilometer km, kilocandela kcd, degree deg):
+*/
+
 static const float ATMO_PI = 3.1415926535897932384626433832795f;
+
+static const Length km = 1000.0 * m;
+static const Area m2 = m * m;
+static const Volume m3 = m * m * m;
+static const Angle pi = ATMO_PI * rad;
+static const Angle deg = pi / 180.0f;
+static const Irradiance watt_per_square_meter = watt / m2;
+static const Radiance watt_per_square_meter_per_sr = watt / (m2 * sr);
+static const SpectralIrradiance watt_per_square_meter_per_nm = watt / (m2 * nm);
+static const SpectralRadiance watt_per_square_meter_per_sr_per_nm =
+    watt / (m2 * sr * nm);
+static const SpectralRadianceDensity watt_per_cubic_meter_per_sr_per_nm =
+    watt / (m3 * sr * nm);
+static const LuminousIntensity cd = lm / sr;
+static const LuminousIntensity kcd = 1000.0 * cd;
+static const Luminance cd_per_square_meter = cd / m2;
+static const Luminance kcd_per_square_meter = kcd / m2;
+
+#endif
 
 /*
 <h3>Atmosphere parameters</h3>
@@ -169,3 +236,5 @@ struct AtmosphereParameters {
     // Earth case, 102 degrees is a good choice - yielding mu_s_min = -0.2).
     Number mu_s_min;
 };
+
+
