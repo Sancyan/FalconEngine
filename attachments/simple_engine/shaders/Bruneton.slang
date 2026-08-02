@@ -1,4 +1,5 @@
 module atmosphere_definitions;
+import AtmosphereConstants;
 
 
 
@@ -537,7 +538,7 @@ DimensionlessSpectrum GetTransmittanceToTopAtmosphereBoundary(
     Length r, Number mu) {
     static_assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius, "r not in valid atmosphere range");
     float2 uv = GetTransmittanceTextureUvFromRMu(atmosphere, r, mu);
-    return DimensionlessSpectrum(texture(transmittance_texture, uv).rgb);
+    return DimensionlessSpectrum(transmittance_texture.Sample(uv).rgb);
 }
 
 
@@ -960,7 +961,7 @@ void GetRMuMuSNuFromScatteringTextureFragCoord(
     Number frag_coord_nu =
       floor(frag_coord.x / Number(SCATTERING_TEXTURE_MU_S_SIZE));
     Number frag_coord_mu_s =
-      mod(frag_coord.x, Number(SCATTERING_TEXTURE_MU_S_SIZE));
+      fmod(frag_coord.x, Number(SCATTERING_TEXTURE_MU_S_SIZE));
     float4 uvwz =
       float4(frag_coord_nu, frag_coord_mu_s, frag_coord.y, frag_coord.z) /
           SCATTERING_TEXTURE_SIZE;
@@ -1001,22 +1002,29 @@ inverse of the 3D-4D mapping defined in
 <code>GetRMuMuSNuFromScatteringTextureFragCoord</code>):
 */
 
-T GetScattering<T>(
-        in AtmosphereParameters atmosphere,
-        in Sampler3D scattering_texture,
-        Length r, Number mu, Number mu_s, Number nu,
-        bool ray_r_mu_intersects_ground) {
+AbstractSpectrum GetScattering(
+    in AtmosphereParameters atmosphere,
+    in Sampler3D scattering_texture, 
+    Length r, float mu, float mu_s, float nu,
+    bool ray_r_mu_intersects_ground)
+{
     float4 uvwz = GetScatteringTextureUvwzFromRMuMuSNu(
-      atmosphere, r, mu, mu_s, nu, ray_r_mu_intersects_ground);
-    Number tex_coord_x = uvwz.x * Number(SCATTERING_TEXTURE_NU_SIZE - 1);
-    Number tex_x = floor(tex_coord_x);
-    Number lerp = tex_coord_x - tex_x;
-    float3 uvw0 = float3((tex_x + uvwz.y) / Number(SCATTERING_TEXTURE_NU_SIZE),
-      uvwz.z, uvwz.w);
-    float3 uvw1 = float3((tex_x + 1.0 + uvwz.y) / Number(SCATTERING_TEXTURE_NU_SIZE),
-      uvwz.z, uvwz.w);
-    return T(texture(scattering_texture, uvw0).rgb * (1.0 - lerp) +
-                            texture(scattering_texture, uvw1).rgb * lerp);
+        atmosphere, r, mu, mu_s, nu, ray_r_mu_intersects_ground);
+
+    float tex_coord_x = uvwz.x * float(SCATTERING_TEXTURE_NU_SIZE - 1);
+    float tex_x = floor(tex_coord_x);
+    float lerp_val = tex_coord_x - tex_x;
+
+    float3 uvw0 = float3((tex_x + uvwz.y) / float(SCATTERING_TEXTURE_NU_SIZE),
+        uvwz.z, uvwz.w);
+    float3 uvw1 = float3((tex_x + 1.0 + uvwz.y) / float(SCATTERING_TEXTURE_NU_SIZE),
+        uvwz.z, uvwz.w);
+
+    float3 val0 = scattering_texture.Sample(uvw0).rgb;
+    float3 val1 = scattering_texture.Sample(uvw1).rgb;
+
+    // Return the interpolated float3 wrapped in the base typedef
+    return AbstractSpectrum(lerp(val0, val1, lerp_val));
 }
 
 /*
@@ -1037,16 +1045,16 @@ RadianceSpectrum GetScattering(
     bool ray_r_mu_intersects_ground,
     int scattering_order) {
     if (scattering_order == 1) {
-        IrradianceSpectrum rayleigh = GetScattering<IrradianceSpectrum>(
+        IrradianceSpectrum rayleigh = GetScattering(
         atmosphere, single_rayleigh_scattering_texture, r, mu, mu_s, nu,
         ray_r_mu_intersects_ground);
-        IrradianceSpectrum mie = GetScattering<IrradianceSpectrum>(
+        IrradianceSpectrum mie = GetScattering(
         atmosphere, single_mie_scattering_texture, r, mu, mu_s, nu,
         ray_r_mu_intersects_ground);
         return rayleigh * RayleighPhaseFunction(nu) +
         mie * MiePhaseFunction(atmosphere.mie_phase_function_g, nu);
     } else {
-        return GetScattering<RadianceSpectrum>(
+        return GetScattering(
         atmosphere, multiple_scattering_texture, r, mu, mu_s, nu,
         ray_r_mu_intersects_ground);
     }
@@ -1358,7 +1366,7 @@ RadianceSpectrum ComputeMultipleScattering(
 
         // The Rayleigh and Mie multiple scattering at the current sample point.
         RadianceSpectrum rayleigh_mie_i =
-            GetScattering<RadianceSpectrum>(
+            GetScattering(
             atmosphere, scattering_density_texture, r_i, mu_i, mu_s_i, nu,
             ray_r_mu_intersects_ground) *
             GetTransmittance(
@@ -1643,7 +1651,7 @@ IrradianceSpectrum GetIrradiance(
     in IrradianceTexture irradiance_texture,
                                  Length r, Number mu_s) {
     float2 uv = GetIrradianceTextureUvFromRMuS(atmosphere, r, mu_s);
-    return IrradianceSpectrum(texture(irradiance_texture, uv).rgb);
+    return IrradianceSpectrum(irradiance_texture.Sample(uv).rgb);
 }
 
 /*
@@ -1717,18 +1725,18 @@ IrradianceSpectrum GetCombinedScattering(
       uvwz.z, uvwz.w);
 #ifdef COMBINED_SCATTERING_TEXTURES
     vec4 combined_scattering =
-        texture(scattering_texture, uvw0) * (1.0 - lerp) +
-      texture(scattering_texture, uvw1) * lerp;
+        scattering_texture.Sample(uvw0) * (1.0 - lerp) +
+      scattering_texture.Sample(uvw1) * lerp;
     IrradianceSpectrum scattering = IrradianceSpectrum(combined_scattering.rgb);
     single_mie_scattering =
       GetExtrapolatedSingleMieScattering(atmosphere, combined_scattering);
 #else
     IrradianceSpectrum scattering = IrradianceSpectrum(
-      texture(scattering_texture, uvw0).rgb * (1.0 - lerp) +
-                                                       texture(scattering_texture, uvw1).rgb * lerp);
+      scattering_texture.Sample(uvw0).rgb * (1.0 - lerp) +
+                                                       scattering_texture.Sample(uvw1).rgb * lerp);
     single_mie_scattering = IrradianceSpectrum(
-      texture(single_mie_scattering_texture, uvw0).rgb * (1.0 - lerp) +
-                                               texture(single_mie_scattering_texture, uvw1).rgb * lerp);
+      single_mie_scattering_texture.Sample(uvw0).rgb * (1.0 - lerp) +
+                                               single_mie_scattering_texture.Sample(uvw1).rgb * lerp);
 #endif
     return scattering;
 }

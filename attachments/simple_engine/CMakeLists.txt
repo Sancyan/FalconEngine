@@ -89,7 +89,7 @@ endif()
 # Shader compilation
 # Find Slang shaders (exclude utility modules that are imported, not compiled standalone)
 file(GLOB SLANG_SHADER_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.slang)
-list(FILTER SLANG_SHADER_SOURCES EXCLUDE REGEX ".*/(Bruneton|culling_utils|common_types|pbr_utils|lighting_utils|tonemapping_utils)\\.slang$")
+list(FILTER SLANG_SHADER_SOURCES EXCLUDE REGEX ".*/(AtmosphereConstants|Bruneton|culling_utils|common_types|pbr_utils|lighting_utils|tonemapping_utils)\\.slang$")
 
 # Find slangc executable (optional)
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin)
