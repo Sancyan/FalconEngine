@@ -40,7 +40,7 @@ typedef float Illuminace;
 depending on the wavelength. In this case the vector elements correspond to
 values of a function at some predefined wavelengths. Again, in GLSL we can't
 define custom vector types to enforce the homogeneity of expressions at compile
-time, so we define these vector types as <code>vec3</code>, with preprocessor
+time, so we define these vector types as <code>float3</code>, with preprocessor
 macros. The full definitions are given in the
 <a href="reference/definitions.h.html">C++ equivalent</a> of this file).
 */
@@ -1212,21 +1212,21 @@ in AtmosphereParameters atmosphere,
                                                  in ScatteringTexture multiple_scattering_texture,
                                                  in IrradianceTexture irradiance_texture,
     Length r, Number mu, Number mu_s, Number nu, int scattering_order) {
-    assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
-    assert(mu >= -1.0 && mu <= 1.0);
-    assert(mu_s >= -1.0 && mu_s <= 1.0);
-    assert(nu >= -1.0 && nu <= 1.0);
-    assert(scattering_order >= 2);
+    static_assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius, "r is not in valid atmo range");
+    static_assert(mu >= -1.0 && mu <= 1.0, "mu is not in -1,1");
+    static_assert(mu_s >= -1.0 && mu_s <= 1.0, "muS is not in -1,1");
+    static_assert(nu >= -1.0 && nu <= 1.0, "NU is not in -1,1");
+    static_assert(scattering_order >= 2, "scattering order is less than 2");
 
     // Compute unit direction vectors for the zenith, the view direction omega and
     // and the sun direction omega_s, such that the cosine of the view-zenith
     // angle is mu, the cosine of the sun-zenith angle is mu_s, and the cosine of
     // the view-sun angle is nu. The goal is to simplify computations below.
-    vec3 zenith_direction = vec3(0.0, 0.0, 1.0);
-    vec3 omega = vec3(sqrt(1.0 - mu * mu), 0.0, mu);
+    float3 zenith_direction = float3(0.0, 0.0, 1.0);
+    float3 omega = float3(sqrt(1.0 - mu * mu), 0.0, mu);
     Number sun_dir_x = omega.x == 0.0 ? 0.0 : (nu - mu * mu_s) / omega.x;
     Number sun_dir_y = sqrt(max(1.0 - sun_dir_x * sun_dir_x - mu_s * mu_s, 0.0));
-    vec3 omega_s = vec3(sun_dir_x, sun_dir_y, mu_s);
+    float3 omega_s = float3(sun_dir_x, sun_dir_y, mu_s);
 
     const int SAMPLE_COUNT = 16;
     const Angle dphi = pi / Number(SAMPLE_COUNT);
@@ -1257,8 +1257,8 @@ in AtmosphereParameters atmosphere,
 
         for (int sample = 0; sample < 2 * SAMPLE_COUNT; ++sample) {
             Angle phi = (Number(sample) + 0.5) * dphi;
-            vec3 omega_i =
-          vec3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
+            float3 omega_i =
+          float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
             SolidAngle domega_i = (dtheta / rad) * (dphi / rad) * sin(theta) * sr;
 
             // The radiance L_i arriving from direction omega_i after n-1 bounces is
@@ -1274,13 +1274,13 @@ in AtmosphereParameters atmosphere,
             // last bounce is on the ground. This contribution is the product of the
             // transmittance to the ground, the ground albedo, the ground BRDF, and
             // the irradiance received on the ground after n-2 bounces.
-            vec3 ground_normal =
+            float3 ground_normal =
           normalize(zenith_direction * r + omega_i * distance_to_ground);
             IrradianceSpectrum ground_irradiance = GetIrradiance(
           atmosphere, irradiance_texture, atmosphere.bottom_radius,
           dot(ground_normal, omega_s));
             incident_radiance += transmittance_to_ground *
-          ground_albedo * (1.0 / (PI * sr)) * ground_irradiance;
+          ground_albedo * (1.0 / (ATMO_PI * sr)) * ground_irradiance;
 
             // The radiance finally scattered from direction omega_i towards direction
             // -omega is the product of the incident radiance, the scattering
@@ -1326,15 +1326,15 @@ instead, using the actual ground albedo.
 */
 
 RadianceSpectrum ComputeMultipleScattering(
-    IN(AtmosphereParameters) atmosphere,
-                                           IN(TransmittanceTexture) transmittance_texture,
-                                           IN(ScatteringDensityTexture) scattering_density_texture,
+    in AtmosphereParameters atmosphere,
+                                           in TransmittanceTexture transmittance_texture,
+                                           in ScatteringDensityTexture scattering_density_texture,
     Length r, Number mu, Number mu_s, Number nu,
     bool ray_r_mu_intersects_ground) {
-    assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
-    assert(mu >= -1.0 && mu <= 1.0);
-    assert(mu_s >= -1.0 && mu_s <= 1.0);
-    assert(nu >= -1.0 && nu <= 1.0);
+    static_assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius, "r is not in atmosphere");
+    static_assert(mu >= -1.0 && mu <= 1.0, "mu is not in -1,1");
+    static_assert(mu_s >= -1.0 && mu_s <= 1.0, "muS is not in -1,1");
+    static_assert(nu >= -1.0 && nu <= 1.0, "NU is not in -1,1");
 
     // Number of intervals for the numerical integration.
     const int SAMPLE_COUNT = 50;
@@ -1358,7 +1358,7 @@ RadianceSpectrum ComputeMultipleScattering(
 
         // The Rayleigh and Mie multiple scattering at the current sample point.
         RadianceSpectrum rayleigh_mie_i =
-            GetScattering(
+            GetScattering<RadianceSpectrum>(
             atmosphere, scattering_density_texture, r_i, mu_i, mu_s_i, nu,
             ray_r_mu_intersects_ground) *
             GetTransmittance(
@@ -1389,13 +1389,13 @@ over the number of bounces:
 */
 
 RadianceDensitySpectrum ComputeScatteringDensityTexture(
-    IN(AtmosphereParameters) atmosphere,
-                                                        IN(TransmittanceTexture) transmittance_texture,
-                                                        IN(ReducedScatteringTexture) single_rayleigh_scattering_texture,
-                                                        IN(ReducedScatteringTexture) single_mie_scattering_texture,
-                                                        IN(ScatteringTexture) multiple_scattering_texture,
-                                                        IN(IrradianceTexture) irradiance_texture,
-    IN(vec3) frag_coord, int scattering_order) {
+    in AtmosphereParameters atmosphere,
+                                                        in TransmittanceTexture transmittance_texture,
+                                                        in ReducedScatteringTexture single_rayleigh_scattering_texture,
+                                                        in ReducedScatteringTexture single_mie_scattering_texture,
+                                                        in ScatteringTexture multiple_scattering_texture,
+                                                        in IrradianceTexture irradiance_texture,
+    in float3 frag_coord, int scattering_order) {
     Length r;
     Number mu;
     Number mu_s;
@@ -1410,10 +1410,10 @@ RadianceDensitySpectrum ComputeScatteringDensityTexture(
 }
 
 RadianceSpectrum ComputeMultipleScatteringTexture(
-    IN(AtmosphereParameters) atmosphere,
-                                                  IN(TransmittanceTexture) transmittance_texture,
-                                                  IN(ScatteringDensityTexture) scattering_density_texture,
-                                                  IN(vec3) frag_coord, OUT(Number) nu) {
+    in AtmosphereParameters atmosphere,
+                                                  in TransmittanceTexture transmittance_texture,
+                                                  in ScatteringDensityTexture scattering_density_texture,
+                                                  in float3 frag_coord, out Number nu) {
     Length r;
     Number mu;
     Number mu_s;
@@ -1484,11 +1484,11 @@ equations can be simplified as follows:
 */
 
 IrradianceSpectrum ComputeDirectIrradiance(
-    IN(AtmosphereParameters) atmosphere,
-                                           IN(TransmittanceTexture) transmittance_texture,
+    in AtmosphereParameters atmosphere,
+                                           in TransmittanceTexture transmittance_texture,
     Length r, Number mu_s) {
-    assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
-    assert(mu_s >= -1.0 && mu_s <= 1.0);
+    static_assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius, "r is not in atmosphere");
+    static_assert(mu_s >= -1.0 && mu_s <= 1.0, "muS is not in -1,1");
 
     Number alpha_s = atmosphere.sun_angular_radius / rad;
     // Approximate average of the cosine factor mu_s over the visible fraction of
@@ -1517,14 +1517,14 @@ $n$):</li>
 */
 
 IrradianceSpectrum ComputeIndirectIrradiance(
-    IN(AtmosphereParameters) atmosphere,
-                                             IN(ReducedScatteringTexture) single_rayleigh_scattering_texture,
-                                             IN(ReducedScatteringTexture) single_mie_scattering_texture,
-                                             IN(ScatteringTexture) multiple_scattering_texture,
+    in AtmosphereParameters atmosphere,
+                                             in ReducedScatteringTexture single_rayleigh_scattering_texture,
+                                             in ReducedScatteringTexture single_mie_scattering_texture,
+                                             in ScatteringTexture multiple_scattering_texture,
     Length r, Number mu_s, int scattering_order) {
-    assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
-    assert(mu_s >= -1.0 && mu_s <= 1.0);
-    assert(scattering_order >= 1);
+    static_assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius, "r is not in atmosphere");
+    static_assert(mu_s >= -1.0 && mu_s <= 1.0, "muS is not in -1,1");
+    static_assert(scattering_order >= 1, "scattering order is less than 1");
 
     const int SAMPLE_COUNT = 32;
     const Angle dphi = pi / Number(SAMPLE_COUNT);
@@ -1532,13 +1532,13 @@ IrradianceSpectrum ComputeIndirectIrradiance(
 
     IrradianceSpectrum result =
       IrradianceSpectrum( 0.0 * watt_per_square_meter_per_nm, 0.0 * watt_per_square_meter_per_nm, 0.0 * watt_per_square_meter_per_nm);
-    vec3 omega_s = vec3(sqrt(1.0 - mu_s * mu_s), 0.0, mu_s);
+    float3 omega_s = float3(sqrt(1.0 - mu_s * mu_s), 0.0, mu_s);
     for (int j = 0; j < SAMPLE_COUNT / 2; ++j) {
         Angle theta = (Number(j) + 0.5) * dtheta;
         for (int i = 0; i < 2 * SAMPLE_COUNT; ++i) {
             Angle phi = (Number(i) + 0.5) * dphi;
-            vec3 omega =
-          vec3(cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta));
+            float3 omega =
+          float3(cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta));
             SolidAngle domega = (dtheta / rad) * (dphi / rad) * sin(theta) * sr;
 
             Number nu = dot(omega, omega_s);
@@ -1563,14 +1563,14 @@ $(u,v)$ texture coordinates. The simplest, affine mapping is sufficient here,
 because the ground irradiance function is very smooth:
 */
 
-vec2 GetIrradianceTextureUvFromRMuS(IN(AtmosphereParameters) atmosphere,
+float2 GetIrradianceTextureUvFromRMuS(in AtmosphereParameters atmosphere,
     Length r, Number mu_s) {
-    assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
-    assert(mu_s >= -1.0 && mu_s <= 1.0);
+    static_assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius, "r is not in atmosphere");
+    static_assert(mu_s >= -1.0 && mu_s <= 1.0, "muS is not in -1,1");
     Number x_r = (r - atmosphere.bottom_radius) /
       (atmosphere.top_radius - atmosphere.bottom_radius);
     Number x_mu_s = mu_s * 0.5 + 0.5;
-    return vec2(GetTextureCoordFromUnitRange(x_mu_s, IRRADIANCE_TEXTURE_WIDTH),
+    return float2(GetTextureCoordFromUnitRange(x_mu_s, IRRADIANCE_TEXTURE_WIDTH),
                 GetTextureCoordFromUnitRange(x_r, IRRADIANCE_TEXTURE_HEIGHT));
 }
 
@@ -1578,10 +1578,10 @@ vec2 GetIrradianceTextureUvFromRMuS(IN(AtmosphereParameters) atmosphere,
 <p>The inverse mapping follows immediately:
 */
 
-void GetRMuSFromIrradianceTextureUv(IN(AtmosphereParameters) atmosphere,
-    IN(vec2) uv, OUT(Length) r, OUT(Number) mu_s) {
-    assert(uv.x >= 0.0 && uv.x <= 1.0);
-    assert(uv.y >= 0.0 && uv.y <= 1.0);
+void GetRMuSFromIrradianceTextureUv(in AtmosphereParameters atmosphere,
+    in float2 uv, out Length r, out Number mu_s) {
+    static_assert(uv.x >= 0.0 && uv.x <= 1.0, "uv X is not in 0,1");
+    static_assert(uv.y >= 0.0 && uv.y <= 1.0, "uv Y is not in 0,1");
     Number x_mu_s = GetUnitRangeFromTextureCoord(uv.x, IRRADIANCE_TEXTURE_WIDTH);
     Number x_r = GetUnitRangeFromTextureCoord(uv.y, IRRADIANCE_TEXTURE_HEIGHT);
     r = atmosphere.bottom_radius +
@@ -1595,16 +1595,16 @@ the ground irradiance texture, for the direct irradiance:
 */
 
 #ifdef D_UNREAL_ENGINE_4
-#define IRRADIANCE_TEXTURE_SIZE vec2(IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT)
+#define IRRADIANCE_TEXTURE_SIZE float2(IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT)
 #else
-const vec2 IRRADIANCE_TEXTURE_SIZE =
-    vec2(IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
+static const float2 IRRADIANCE_TEXTURE_SIZE =
+    float2(IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
 #endif
 
 IrradianceSpectrum ComputeDirectIrradianceTexture(
-    IN(AtmosphereParameters) atmosphere,
-                                                  IN(TransmittanceTexture) transmittance_texture,
-    IN(vec2) frag_coord) {
+    in AtmosphereParameters atmosphere,
+                                                  in TransmittanceTexture transmittance_texture,
+    in float2 frag_coord) {
     Length r;
     Number mu_s;
     GetRMuSFromIrradianceTextureUv(
@@ -1617,11 +1617,11 @@ IrradianceSpectrum ComputeDirectIrradianceTexture(
 */
 
 IrradianceSpectrum ComputeIndirectIrradianceTexture(
-    IN(AtmosphereParameters) atmosphere,
-                                                    IN(ReducedScatteringTexture) single_rayleigh_scattering_texture,
-                                                    IN(ReducedScatteringTexture) single_mie_scattering_texture,
-                                                    IN(ScatteringTexture) multiple_scattering_texture,
-                                                    IN(vec2) frag_coord, int scattering_order) {
+    in AtmosphereParameters atmosphere,
+                                                    in ReducedScatteringTexture single_rayleigh_scattering_texture,
+                                                    in ReducedScatteringTexture single_mie_scattering_texture,
+                                                    in ScatteringTexture multiple_scattering_texture,
+                                                    in float2 frag_coord, int scattering_order) {
     Length r;
     Number mu_s;
     GetRMuSFromIrradianceTextureUv(
@@ -1639,10 +1639,10 @@ with a single texture lookup:
 */
 
 IrradianceSpectrum GetIrradiance(
-    IN(AtmosphereParameters) atmosphere,
-    IN(IrradianceTexture) irradiance_texture,
+    in AtmosphereParameters atmosphere,
+    in IrradianceTexture irradiance_texture,
                                  Length r, Number mu_s) {
-    vec2 uv = GetIrradianceTextureUvFromRMuS(atmosphere, r, mu_s);
+    float2 uv = GetIrradianceTextureUvFromRMuS(atmosphere, r, mu_s);
     return IrradianceSpectrum(texture(irradiance_texture, uv).rgb);
 }
 
@@ -1677,10 +1677,10 @@ function:
 */
 
 #ifdef COMBINED_SCATTERING_TEXTURES
-vec3 GetExtrapolatedSingleMieScattering(
-    IN(AtmosphereParameters) atmosphere, IN(vec4) scattering) {
+float3 GetExtrapolatedSingleMieScattering(
+    in AtmosphereParameters atmosphere, in float4 scattering) {
     if (scattering.r == 0.0) {
-        return vec3(0.0, 0.0, 0.0);
+        return float3(0.0, 0.0, 0.0);
     }
     return scattering.rgb * scattering.a / scattering.r *
            (atmosphere.rayleigh_scattering.r / atmosphere.mie_scattering.r) *
@@ -1700,20 +1700,20 @@ in <code>scattering_texture</code> and
 */
 
 IrradianceSpectrum GetCombinedScattering(
-    IN(AtmosphereParameters) atmosphere,
-                                         IN(ReducedScatteringTexture) scattering_texture,
-                                         IN(ReducedScatteringTexture) single_mie_scattering_texture,
+    in AtmosphereParameters atmosphere,
+                                         in ReducedScatteringTexture scattering_texture,
+                                         in ReducedScatteringTexture single_mie_scattering_texture,
     Length r, Number mu, Number mu_s, Number nu,
     bool ray_r_mu_intersects_ground,
-                                         OUT(IrradianceSpectrum) single_mie_scattering) {
-    vec4 uvwz = GetScatteringTextureUvwzFromRMuMuSNu(
+                                         out IrradianceSpectrum single_mie_scattering) {
+    float4 uvwz = GetScatteringTextureUvwzFromRMuMuSNu(
       atmosphere, r, mu, mu_s, nu, ray_r_mu_intersects_ground);
     Number tex_coord_x = uvwz.x * Number(SCATTERING_TEXTURE_NU_SIZE - 1);
     Number tex_x = floor(tex_coord_x);
     Number lerp = tex_coord_x - tex_x;
-    vec3 uvw0 = vec3((tex_x + uvwz.y) / Number(SCATTERING_TEXTURE_NU_SIZE),
+    float3 uvw0 = float3((tex_x + uvwz.y) / Number(SCATTERING_TEXTURE_NU_SIZE),
       uvwz.z, uvwz.w);
-    vec3 uvw1 = vec3((tex_x + 1.0 + uvwz.y) / Number(SCATTERING_TEXTURE_NU_SIZE),
+    float3 uvw1 = float3((tex_x + 1.0 + uvwz.y) / Number(SCATTERING_TEXTURE_NU_SIZE),
       uvwz.z, uvwz.w);
 #ifdef COMBINED_SCATTERING_TEXTURES
     vec4 combined_scattering =
@@ -1747,12 +1747,12 @@ of viewers outside the atmosphere, and the case of light shafts:
 */
 
 RadianceSpectrum GetSkyRadiance(
-    IN(AtmosphereParameters) atmosphere,
-    IN(TransmittanceTexture) transmittance_texture,
-                                IN(ReducedScatteringTexture) scattering_texture,
-                                IN(ReducedScatteringTexture) single_mie_scattering_texture,
-    Position camera, IN(Direction) view_ray, Length shadow_length,
-    IN(Direction) sun_direction, OUT(DimensionlessSpectrum) transmittance) {
+    in AtmosphereParameters atmosphere,
+    in TransmittanceTexture transmittance_texture,
+                                in ReducedScatteringTexture scattering_texture,
+                                in ReducedScatteringTexture single_mie_scattering_texture,
+    Position camera, in Direction view_ray, Length shadow_length,
+    in Direction sun_direction, out DimensionlessSpectrum transmittance) {
     // Compute the distance to the top atmosphere boundary along the view ray,
     // assuming the viewer is in space (or NaN if the view ray does not intersect
     // the atmosphere).
@@ -1829,12 +1829,12 @@ correctly handle the case of viewers outside the atmosphere):
 */
 
 RadianceSpectrum GetSkyRadianceToPoint(
-    IN(AtmosphereParameters) atmosphere,
-                                       IN(TransmittanceTexture) transmittance_texture,
-                                       IN(ReducedScatteringTexture) scattering_texture,
-                                       IN(ReducedScatteringTexture) single_mie_scattering_texture,
-    Position camera, IN(Position) thePoint, Length shadow_length,
-    IN(Direction) sun_direction, OUT(DimensionlessSpectrum) transmittance) {
+    in AtmosphereParameters atmosphere,
+                                       in TransmittanceTexture transmittance_texture,
+                                       in ReducedScatteringTexture scattering_texture,
+                                       in ReducedScatteringTexture single_mie_scattering_texture,
+    Position camera, in Position thePoint, Length shadow_length,
+    in Direction sun_direction, out DimensionlessSpectrum transmittance) {
     // Compute the distance to the top atmosphere boundary along the view ray,
     // assuming the viewer is in space (or NaN if the view ray does not intersect
     // the atmosphere).
@@ -1920,11 +1920,11 @@ The function below returns the direct and indirect irradiances separately:
 */
 
 IrradianceSpectrum GetSunAndSkyIrradiance(
-    IN(AtmosphereParameters) atmosphere,
-                                          IN(TransmittanceTexture) transmittance_texture,
-                                          IN(IrradianceTexture) irradiance_texture,
-    IN(Position) thePoint, IN(Direction) normal, IN(Direction) sun_direction,
-                                          OUT(IrradianceSpectrum) sky_irradiance) {
+    in AtmosphereParameters atmosphere,
+                                          in TransmittanceTexture transmittance_texture,
+                                          in IrradianceTexture irradiance_texture,
+    in Position thePoint, in Direction normal, in Direction sun_direction,
+                                          out IrradianceSpectrum sky_irradiance) {
     Length r = length(thePoint);
     Number mu_s = dot(thePoint, sun_direction) / r;
 
