@@ -1213,13 +1213,14 @@ equal to $n$):</li>
 */
 
 RadianceDensitySpectrum ComputeScatteringDensity(
-in AtmosphereParameters atmosphere,
+                                                 in AtmosphereParameters atmosphere,
                                                  in TransmittanceTexture transmittance_texture,
                                                  in ReducedScatteringTexture single_rayleigh_scattering_texture,
                                                  in ReducedScatteringTexture single_mie_scattering_texture,
                                                  in ScatteringTexture multiple_scattering_texture,
                                                  in IrradianceTexture irradiance_texture,
     Length r, Number mu, Number mu_s, Number nu, int scattering_order) {
+
     static_assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius, "r is not in valid atmo range");
     static_assert(mu >= -1.0 && mu <= 1.0, "mu is not in -1,1");
     static_assert(mu_s >= -1.0 && mu_s <= 1.0, "muS is not in -1,1");
