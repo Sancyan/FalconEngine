@@ -21,6 +21,112 @@
 
 // This file contains compute-related methods from the Renderer class
 
+bool Renderer::createAtmosphereCompute()
+{
+    try
+    {
+        //Read Atmosphere shader file
+		auto atmosphereComputeCode = readFile("shaders/atmosphere.spv");        // TODO: MAKE SURE TO COMPILE SLANG ATMO SHADERS IN CMAKE
+
+        //Create shader module. NOTE: May want to migrate to use shader objects instead at some point
+        vk::raii::ShaderModule atmoShaderModule = createShaderModule(atmosphereComputeCode);
+
+        //Create pipeline stage info
+        vk::PipelineShaderStageCreateInfo atmosphereShaderStageInfo{
+		    .stage  = vk::ShaderStageFlagBits::eCompute,
+		    .module = *atmoShaderModule,
+		    .pName  = "main"};
+
+        //Create descriptor set layout for atmosphere
+        std::array<vk::DescriptorSetLayoutBinding, 5> atmosphereBindings = {
+		    vk::DescriptorSetLayoutBinding{
+		        .binding            = 0,
+		        .descriptorType     = vk::DescriptorType::eUniformBuffer,
+		        .descriptorCount    = 1,
+		        .stageFlags         = vk::ShaderStageFlagBits::eCompute,
+		        .pImmutableSamplers = nullptr
+	    },
+		    vk::DescriptorSetLayoutBinding{
+		        .binding            = 1,
+		        .descriptorType     = vk::DescriptorType::eSampledImage,
+		        .descriptorCount    = 1,
+		        .stageFlags         = vk::ShaderStageFlagBits::eCompute,
+		        .pImmutableSamplers = nullptr
+        },
+			vk::DescriptorSetLayoutBinding{
+			    .binding            = 2,
+			    .descriptorType     = vk::DescriptorType::eSampler,
+			    .stageFlags         = vk::ShaderStageFlagBits::eCompute,
+			    .pImmutableSamplers = nullptr
+        },
+			vk::DescriptorSetLayoutBinding{
+			    .binding            = 3,
+			    .descriptorType     = vk::DescriptorType::eStorageImage,
+			    .stageFlags         = vk::ShaderStageFlagBits::eCompute,
+			    .pImmutableSamplers = nullptr
+        },
+            vk::DescriptorSetLayoutBinding{
+                .binding = 4, 
+                .descriptorType = vk::DescriptorType::eStorageImage,
+                .stageFlags = vk::ShaderStageFlagBits::eCompute,
+                .pImmutableSamplers = nullptr
+        }
+
+		};
+
+        vk::DescriptorSetLayoutCreateInfo atmosphereLayoutInfo{
+		    .bindingCount = static_cast<uint32_t>(atmosphereBindings.size()),
+		    .pBindings    = atmosphereBindings.data()
+        };
+
+        atmosphereDescriptorSetLayout = vk::raii::DescriptorSetLayout(device, atmosphereLayoutInfo);
+
+
+        //Create info pipeline for atmosphere
+        vk::PipelineLayoutCreateInfo atmospherePipelineLayoutInfo
+		{
+			.setLayoutCount         = 1,
+			.pSetLayouts            = &*atmosphereDescriptorSetLayout,
+			.pushConstantRangeCount = 0,
+            .pPushConstantRanges = nullptr
+		};
+
+        atmospherePipelineLayout = vk::raii::PipelineLayout(device, atmospherePipelineLayoutInfo);
+
+        vk::ComputePipelineCreateInfo atmospherePipelineInfo{
+		    .stage  = atmosphereShaderStageInfo,
+		    .layout = *atmospherePipelineLayout
+        };
+
+        atmospherePipeline = vk::raii::Pipeline(device, nullptr,atmospherePipelineInfo);
+
+        std::array<vk::DescriptorPoolSize, 4> atmospherePoolSizes = {
+		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1u * N},
+		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eSampledImage, .descriptorCount = 1u * N},
+		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eSampler, .descriptorCount = 1u * N},
+		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eStorageImage, .descriptorCount = 2u * N},
+		};
+
+        vk::DescriptorPoolCreateInfo atmoPoolInfo{
+		    .flags                        = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+		    .maxSets                      = 1,        // NOTE: May have to adjust, not sure yet if multiple copies of LUTs are needed for frames in flight
+		    .poolSizeCount = static_cast<uint32_t>(atmospherePoolSizes.size()),
+		    .pPoolSizes                   = atmospherePoolSizes.data()
+        };
+
+        atmosphereDescriptorPool = vk::raii::DescriptorPool(device, atmoPoolInfo);
+
+        return createComputeCommandPool();
+
+
+    }
+	catch (const std::exception &e)
+	{
+		std::cerr << "Failed to create Atmosphere pipeline: " << e.what() << std::endl;
+		return false;
+	}
+}
+
 // Create compute pipeline
 bool Renderer::createComputePipeline() {
   try {

@@ -1759,7 +1759,8 @@ class Renderer {
     void dispatchForwardPlus(vk::raii::CommandBuffer& cmd, uint32_t tilesX, uint32_t tilesY, uint32_t slicesZ);
     // Ensure Forward+ compute descriptor set binding 0 (lights SSBO) is bound for a frame
     void refreshForwardPlusComputeLightsBindingForFrame(uint32_t frameIndex);
-    bool createComputePipeline();
+	bool createAtmosphereCompute();
+	bool createComputePipeline();
     void pushMaterialProperties(vk::CommandBuffer commandBuffer, const MaterialProperties& material) const;
     bool createCommandPool();
 
