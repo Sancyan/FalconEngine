@@ -91,32 +91,32 @@ bool Renderer::createAtmosphereCompute()
             .pPushConstantRanges = nullptr
 		};
 
-        atmospherePipelineLayout = vk::raii::PipelineLayout(device, atmospherePipelineLayoutInfo);
+        atmoSpherePipelineLayout = vk::raii::PipelineLayout(device, atmospherePipelineLayoutInfo);
 
         vk::ComputePipelineCreateInfo atmospherePipelineInfo{
 		    .stage  = atmosphereShaderStageInfo,
-		    .layout = *atmospherePipelineLayout
+		    .layout = *atmoSpherePipelineLayout
         };
 
-        atmospherePipeline = vk::raii::Pipeline(device, nullptr,atmospherePipelineInfo);
+        atmoSpherePipeline = vk::raii::Pipeline(device, nullptr,atmospherePipelineInfo);
 
         std::array<vk::DescriptorPoolSize, 4> atmospherePoolSizes = {
-		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1u * N},
-		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eSampledImage, .descriptorCount = 1u * N},
-		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eSampler, .descriptorCount = 1u * N},
-		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eStorageImage, .descriptorCount = 2u * N},
+		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1u}, //Atmo params
+		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eSampledImage, .descriptorCount = 1u},//Transmittance LUT Read
+		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eSampler, .descriptorCount = 1u},// Linear clamp sampler
+		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eStorageImage, .descriptorCount = 2u}, //Multi and Transmittance Write
 		};
 
         vk::DescriptorPoolCreateInfo atmoPoolInfo{
 		    .flags                        = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-		    .maxSets                      = 1,        // NOTE: May have to adjust, not sure yet if multiple copies of LUTs are needed for frames in flight
+		    .maxSets                      = 1,        // NOTE: May have to adjust
 		    .poolSizeCount = static_cast<uint32_t>(atmospherePoolSizes.size()),
 		    .pPoolSizes                   = atmospherePoolSizes.data()
         };
 
         atmosphereDescriptorPool = vk::raii::DescriptorPool(device, atmoPoolInfo);
 
-        return createComputeCommandPool();
+        return createAtmosphereCommandPool();
 
 
     }
@@ -125,6 +125,38 @@ bool Renderer::createAtmosphereCompute()
 		std::cerr << "Failed to create Atmosphere pipeline: " << e.what() << std::endl;
 		return false;
 	}
+}
+
+bool Renderer::createAtmosphereCommandPool()
+{
+	try
+	{
+		vk::CommandPoolCreateInfo poolInfo{
+		    .flags            = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+		    .queueFamilyIndex = queueFamilyIndices.computeFamily.value()};
+
+		atmoSphereCommandPool = vk::raii::CommandPool(device, poolInfo);
+		return true;
+	}
+	catch (const std::exception &e)
+	{
+		std::cerr << "Failed to create atmosphere command pool: " << e.what() << std::endl;
+		return false;
+	}
+}
+
+void Renderer::dispatchAtmoSphereRender(uint32_t groupCountX,
+    uint32_t groupCountY,
+    uint32_t groupCountZ, //ATMOSPHERE PARAM STRUCT)
+{
+
+}
+
+void Renderer::generateAtmosphereLUTs(uint32_t groupCountX,
+    uint32_t groupCountY,
+    uint32_t groupCountZ, vk::raii::CommandBuffer& cmd, //STRUCT ATMOSPHERE PARAMS)
+{
+
 }
 
 // Create compute pipeline
@@ -526,6 +558,7 @@ bool Renderer::createComputeCommandPool() {
     return false;
   }
 }
+
 
 // Dispatch compute shader
 vk::raii::Fence Renderer::DispatchCompute(uint32_t groupCountX,

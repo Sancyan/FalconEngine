@@ -953,7 +953,7 @@ class Renderer {
     Platform* platform = nullptr;
 
     // Model loader reference for accessing extracted lights
-    class ModelLoader* modelLoader = nullptr;
+      ModelLoader* modelLoader = nullptr;
 
     // PBR rendering parameters
     float gamma = 2.2f; // Gamma correction value
@@ -1052,6 +1052,78 @@ class Renderer {
     vk::raii::DescriptorPool computeDescriptorPool = nullptr;
     std::vector<vk::raii::DescriptorSet> computeDescriptorSets;
     vk::raii::CommandPool computeCommandPool = nullptr;
+
+    //Atmosphere Compute Pipeline
+	vk::raii::PipelineLayout atmoSpherePipelineLayout = nullptr;
+	vk::raii::Pipeline       atmoSpherePipeline       = nullptr;
+	vk::raii::DescriptorSetLayout atmosphereDescriptorSetLayout = nullptr;
+	vk::raii::DescriptorPool      atmosphereDescriptorPool      = nullptr;
+	std::vector<vk::raii::DescriptorSet> atmoSphereDescriptorSets;
+	vk::raii::CommandPool                atmoSphereCommandPool = nullptr;
+
+      /**
+	 * @brief Structure for atmopshere properties.
+	 * This structure must match the UBO structure in the atmosphere  shader.
+	 */
+	struct AtmosphereParameters
+	{
+	  
+		glm::vec3 RayleighScattering;
+	  
+		float RayleighDensityExpScale;
+
+	  
+		glm::vec3 MieScattering;
+	  
+		float MieDensityExpScale;
+
+	  
+		glm::vec3 MieExtinction;
+	  
+		float MiePhaseG;
+
+	  
+		glm::vec3 MieAbsorption;
+	  
+		float BottomRadius;
+
+	  
+		glm::vec3 AbsorptionExtinction;
+	  
+		float TopRadius;
+
+	  
+		glm::vec3 GroundAlbedo;
+	  
+		float MultipleScatteringFactor;
+
+	  
+		float AbsorptionDensity0LayerWidth;
+	  
+		float AbsorptionDensity0ConstantTerm;
+	  
+		float AbsorptionDensity0LinearTerm;
+	  
+		float AbsorptionDensity1ConstantTerm;
+
+	  
+		float AbsorptionDensity1LinearTerm;
+	  
+		float MultiScatteringLUTRes;
+	  
+		int TRANSMITTANCE_TEXTURE_WIDTH;
+	  
+		int TRANSMITTANCE_TEXTURE_HEIGHT;
+	};
+
+    //Atmosphere Params
+	AtmosphereParameters atmoParams{};
+
+    void setAtmoSphereParams()
+    {
+		atmoParams.RayleighScattering = glm::vec3(.5, .5, .5);
+        //TODO: FINISH AND LOOK UP ATMOSPHERE DEFAULT VALUES
+    }
 
     // Thread safety for queue access - unified mutex since queues may share the same underlying VkQueue
     mutable std::mutex queueMutex;
@@ -1763,6 +1835,7 @@ class Renderer {
 	bool createComputePipeline();
     void pushMaterialProperties(vk::CommandBuffer commandBuffer, const MaterialProperties& material) const;
     bool createCommandPool();
+	bool createAtmosphereCommandPool();
 
     // Shadow mapping methods
     bool createComputeCommandPool();
