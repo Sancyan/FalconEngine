@@ -248,6 +248,53 @@ enum class RenderMode {
  */
 class Renderer {
   public:
+
+            /**
+	 * @brief Structure for atmopshere properties.
+	 * This structure must match the UBO structure in the atmosphere  shader.
+	 */
+	struct AtmosphereParameters
+	{
+		glm::vec3 RayleighScattering;
+
+		float RayleighDensityExpScale;
+
+		glm::vec3 MieScattering;
+
+		float MieDensityExpScale;
+
+		glm::vec3 MieExtinction;
+
+		float MiePhaseG;
+
+		glm::vec3 MieAbsorption;
+
+		float BottomRadius;
+
+		glm::vec3 AbsorptionExtinction;
+
+		float TopRadius;
+
+		glm::vec3 GroundAlbedo;
+
+		float MultipleScatteringFactor;
+
+		float AbsorptionDensity0LayerWidth;
+
+		float AbsorptionDensity0ConstantTerm;
+
+		float AbsorptionDensity0LinearTerm;
+
+		float AbsorptionDensity1ConstantTerm;
+
+		float AbsorptionDensity1LinearTerm;
+
+		float MultiScatteringLUTRes;
+
+		int TRANSMITTANCE_TEXTURE_WIDTH;
+
+		int TRANSMITTANCE_TEXTURE_HEIGHT;
+	};
     /**
 	 * @brief Constructor with a platform.
 	 * @param platform The platform to use for rendering.
@@ -1055,66 +1102,28 @@ class Renderer {
 
     //Atmosphere Compute Pipeline
 	vk::raii::PipelineLayout atmoSpherePipelineLayout = nullptr;
-	vk::raii::Pipeline       atmoSpherePipeline       = nullptr;
+	vk::raii::Pipeline                   transmittanceLUTPipeline      = nullptr;
+	vk::raii::Pipeline                   multiScatterLUTPipeline       = nullptr;
 	vk::raii::DescriptorSetLayout atmosphereDescriptorSetLayout = nullptr;
 	vk::raii::DescriptorPool      atmosphereDescriptorPool      = nullptr;
 	std::vector<vk::raii::DescriptorSet> atmoSphereDescriptorSets;
 	vk::raii::CommandPool                atmoSphereCommandPool = nullptr;
 
-      /**
-	 * @brief Structure for atmopshere properties.
-	 * This structure must match the UBO structure in the atmosphere  shader.
-	 */
-	struct AtmosphereParameters
-	{
-	  
-		glm::vec3 RayleighScattering;
-	  
-		float RayleighDensityExpScale;
+    vk::raii::Image                         transmittanceLUTImage      = nullptr;
+	std::unique_ptr<MemoryPool::Allocation> transmittanceLUTAllocation = nullptr;
+	vk::raii::ImageView                     transmittanceLUTView       = nullptr;
 
-	  
-		glm::vec3 MieScattering;
-	  
-		float MieDensityExpScale;
+	vk::raii::Image                         multiScatterLUTImage      = nullptr;
+	std::unique_ptr<MemoryPool::Allocation> multiScatterLUTAllocation = nullptr;
+	vk::raii::ImageView                     multiScatterLUTView       = nullptr;
 
-	  
-		glm::vec3 MieExtinction;
-	  
-		float MiePhaseG;
+	vk::raii::Sampler atmosphereLUTSampler = nullptr;
 
-	  
-		glm::vec3 MieAbsorption;
-	  
-		float BottomRadius;
+	vk::raii::Buffer       atmosphereParamsBuffer       = nullptr;
+	vk::raii::DeviceMemory atmosphereParamsBufferMemory = nullptr;
+	void                  *atmosphereParamsMapped       = nullptr;
 
-	  
-		glm::vec3 AbsorptionExtinction;
-	  
-		float TopRadius;
 
-	  
-		glm::vec3 GroundAlbedo;
-	  
-		float MultipleScatteringFactor;
-
-	  
-		float AbsorptionDensity0LayerWidth;
-	  
-		float AbsorptionDensity0ConstantTerm;
-	  
-		float AbsorptionDensity0LinearTerm;
-	  
-		float AbsorptionDensity1ConstantTerm;
-
-	  
-		float AbsorptionDensity1LinearTerm;
-	  
-		float MultiScatteringLUTRes;
-	  
-		int TRANSMITTANCE_TEXTURE_WIDTH;
-	  
-		int TRANSMITTANCE_TEXTURE_HEIGHT;
-	};
 
     //Atmosphere Params
 	AtmosphereParameters atmoParams{};
@@ -1851,6 +1860,7 @@ class Renderer {
     // Ensure Forward+ compute descriptor set binding 0 (lights SSBO) is bound for a frame
     void refreshForwardPlusComputeLightsBindingForFrame(uint32_t frameIndex);
 	bool createAtmosphereCompute();
+	bool createAtmosphereResources();
 	bool createComputePipeline();
     void pushMaterialProperties(vk::CommandBuffer commandBuffer, const MaterialProperties& material) const;
     bool createCommandPool();

@@ -25,17 +25,20 @@ bool Renderer::createAtmosphereCompute()
 {
     try
     {
-        //Read Atmosphere shader file
-		auto atmosphereComputeCode = readFile("shaders/atmosphere.spv");        // TODO: MAKE SURE TO COMPILE SLANG ATMO SHADERS IN CMAKE
+		auto                              transmittanceCode   = readFile("shaders/TransmittanceLUT.spv");
+		vk::raii::ShaderModule            transmittanceModule = createShaderModule(transmittanceCode);
+		vk::PipelineShaderStageCreateInfo transmittanceStageInfo{
+		    .stage = vk::ShaderStageFlagBits::eCompute, .module = *transmittanceModule, .pName = "main"};
+		transmittanceLUTPipeline = vk::raii::Pipeline(device, nullptr,
+		                                              vk::ComputePipelineCreateInfo{.stage = transmittanceStageInfo, .layout = *atmoSpherePipelineLayout});
 
-        //Create shader module. NOTE: May want to migrate to use shader objects instead at some point
-        vk::raii::ShaderModule atmoShaderModule = createShaderModule(atmosphereComputeCode);
+		auto                              multiScatterCode   = readFile("shaders/MultiScatterLUT.spv");
+		vk::raii::ShaderModule            multiScatterModule = createShaderModule(multiScatterCode);
+		vk::PipelineShaderStageCreateInfo multiScatterStageInfo{
+		    .stage = vk::ShaderStageFlagBits::eCompute, .module = *multiScatterModule, .pName = "main"};
+		multiScatterLUTPipeline = vk::raii::Pipeline(device, nullptr,
+		                                             vk::ComputePipelineCreateInfo{.stage = multiScatterStageInfo, .layout = *atmoSpherePipelineLayout});
 
-        //Create pipeline stage info
-        vk::PipelineShaderStageCreateInfo atmosphereShaderStageInfo{
-		    .stage  = vk::ShaderStageFlagBits::eCompute,
-		    .module = *atmoShaderModule,
-		    .pName  = "main"};
 
         //Create descriptor set layout for atmosphere
         std::array<vk::DescriptorSetLayoutBinding, 5> atmosphereBindings = {
@@ -94,11 +97,17 @@ bool Renderer::createAtmosphereCompute()
         atmoSpherePipelineLayout = vk::raii::PipelineLayout(device, atmospherePipelineLayoutInfo);
 
         vk::ComputePipelineCreateInfo atmospherePipelineInfo{
-		    .stage  = atmosphereShaderStageInfo,
+		    .stage  = transmittanceStageInfo,
 		    .layout = *atmoSpherePipelineLayout
         };
 
-        atmoSpherePipeline = vk::raii::Pipeline(device, nullptr,atmospherePipelineInfo);
+        transmittanceLUTPipeline = vk::raii::Pipeline(device, nullptr,atmospherePipelineInfo);
+
+                vk::ComputePipelineCreateInfo atmospherePipelineInfo{
+		    .stage  = multiScatterStageInfo,
+		    .layout = *atmoSpherePipelineLayout};
+
+		multiScatterLUTPipeline = vk::raii::Pipeline(device, nullptr, atmospherePipelineInfo);
 
         std::array<vk::DescriptorPoolSize, 4> atmospherePoolSizes = {
 		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1u}, //Atmo params
@@ -127,6 +136,95 @@ bool Renderer::createAtmosphereCompute()
 	}
 }
 
+bool Renderer::createAtmosphereResources()
+{
+	try
+	{
+		constexpr uint32_t   kTransmittanceW  = 256;
+		constexpr uint32_t   kTransmittanceH  = 64;
+		constexpr uint32_t   kMultiScatterRes = 32;
+		constexpr vk::Format kLutFormat       = vk::Format::eR16G16B16A16Sfloat;
+
+		// --- Transmittance LUT image ---
+		std::tie(transmittanceLUTImage, transmittanceLUTAllocation) = createImagePooled(
+		    kTransmittanceW, kTransmittanceH, kLutFormat,
+		    vk::ImageTiling::eOptimal,
+		    vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
+		    vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+		transmittanceLUTView = createImageView(transmittanceLUTImage, kLutFormat, vk::ImageAspectFlagBits::eColor);
+
+		transitionImageLayout(*transmittanceLUTImage, kLutFormat,
+		                      vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+
+		// --- Multi-Scatter LUT image ---
+		std::tie(multiScatterLUTImage, multiScatterLUTAllocation) = createImagePooled(
+		    kMultiScatterRes, kMultiScatterRes, kLutFormat,
+		    vk::ImageTiling::eOptimal,
+		    vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
+		    vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+		multiScatterLUTView = createImageView(multiScatterLUTImage, kLutFormat, vk::ImageAspectFlagBits::eColor);
+
+		transitionImageLayout(*multiScatterLUTImage, kLutFormat,
+		                      vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+
+		// --- Linear clamp sampler, shared by both LUTs ---
+		vk::SamplerCreateInfo samplerInfo{
+		    .magFilter        = vk::Filter::eLinear,
+		    .minFilter        = vk::Filter::eLinear,
+		    .mipmapMode       = vk::SamplerMipmapMode::eLinear,
+		    .addressModeU     = vk::SamplerAddressMode::eClampToEdge,
+		    .addressModeV     = vk::SamplerAddressMode::eClampToEdge,
+		    .addressModeW     = vk::SamplerAddressMode::eClampToEdge,
+		    .anisotropyEnable = VK_FALSE,
+		    .compareEnable    = VK_FALSE,
+		    .compareOp        = vk::CompareOp::eAlways,
+		    .borderColor      = vk::BorderColor::eFloatOpaqueBlack};
+		atmosphereLUTSampler = vk::raii::Sampler(device, samplerInfo);
+
+		// --- Atmosphere params UBO, persistently mapped ---
+		vk::DeviceSize uboSize                                         = sizeof(AtmosphereParameters);
+		std::tie(atmosphereParamsBuffer, atmosphereParamsBufferMemory) = createBuffer(
+		    uboSize,
+		    vk::BufferUsageFlagBits::eUniformBuffer,
+		    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+		atmosphereParamsMapped = atmosphereParamsBufferMemory.mapMemory(0, uboSize);
+
+		// --- Allocate the one atmosphere descriptor set ---
+		vk::DescriptorSetAllocateInfo dsAllocInfo{
+		    .descriptorPool     = *atmosphereDescriptorPool,
+		    .descriptorSetCount = 1,
+		    .pSetLayouts        = &*atmosphereDescriptorSetLayout};
+		atmoSphereDescriptorSets = vk::raii::DescriptorSets(device, dsAllocInfo);
+
+		// --- Write it once ---
+		vk::DescriptorBufferInfo paramsInfo{.buffer = *atmosphereParamsBuffer, .offset = 0, .range = uboSize};
+		vk::DescriptorImageInfo  transmittanceReadInfo{.imageView = *transmittanceLUTView, .imageLayout = vk::ImageLayout::eGeneral};
+		vk::DescriptorImageInfo  samplerOnlyInfo{.sampler = *atmosphereLUTSampler};
+		vk::DescriptorImageInfo  transmittanceWriteInfo{.imageView = *transmittanceLUTView, .imageLayout = vk::ImageLayout::eGeneral};
+		vk::DescriptorImageInfo  multiScatterWriteInfo{.imageView = *multiScatterLUTView, .imageLayout = vk::ImageLayout::eGeneral};
+
+		std::array<vk::WriteDescriptorSet, 5> writes{
+		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &paramsInfo},
+		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 1, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eSampledImage, .pImageInfo = &transmittanceReadInfo},
+		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 2, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eSampler, .pImageInfo = &samplerOnlyInfo},
+		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 3, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageImage, .pImageInfo = &transmittanceWriteInfo},
+		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 4, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageImage, .pImageInfo = &multiScatterWriteInfo},
+		};
+		device.updateDescriptorSets(writes, nullptr);
+
+		return true;
+
+	}
+	catch (const std::exception &e)
+	{
+		std::cerr << "Failed to create Atmosphere Resources: " << e.what() << std::endl;
+		return false;
+	}
+}
+
 bool Renderer::createAtmosphereCommandPool()
 {
 	try
@@ -147,17 +245,41 @@ bool Renderer::createAtmosphereCommandPool()
 
 void Renderer::dispatchAtmoSphereRender(uint32_t groupCountX,
     uint32_t groupCountY,
-    uint32_t groupCountZ, //ATMOSPHERE PARAM STRUCT)
+     uint32_t groupCountZ, vk::raii::CommandBuffer &cmd, const Renderer::AtmosphereParameters &params)
 {
 
 }
 
-void Renderer::generateAtmosphereLUTs(uint32_t groupCountX,
-    uint32_t groupCountY,
-    uint32_t groupCountZ, vk::raii::CommandBuffer& cmd, //STRUCT ATMOSPHERE PARAMS)
+void Renderer::generateAtmosphereLUTs(vk::raii::CommandBuffer& cmd, const Renderer::AtmosphereParameters& params)
 {
+	std::memcpy(atmosphereParamsMapped, &params, sizeof(Renderer::AtmosphereParameters));
+
+	// Pass 1: Transmittance — 256x64 texels, 8x8 threads/group
+	cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *transmittanceLUTPipeline);
+	cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *atmoSpherePipelineLayout, 0,
+	                       {*atmoSphereDescriptorSets[0]}, {});
+	cmd.dispatch(32, 8, 1);        // 256/8, 64/8
+
+	// Barrier: Transmittance write must finish before Multi-Scatter reads it.
+	// Same layout on both sides (eGeneral) - this is a memory/execution barrier, not a layout transition.
+	vk::ImageMemoryBarrier barrier{
+	    .srcAccessMask       = vk::AccessFlagBits::eShaderWrite,
+	    .dstAccessMask       = vk::AccessFlagBits::eShaderRead,
+	    .oldLayout           = vk::ImageLayout::eGeneral,
+	    .newLayout           = vk::ImageLayout::eGeneral,
+	    .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+	    .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+	    .image               = *transmittanceLUTImage,
+	    .subresourceRange    = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
+	cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
+	                    {}, {}, {}, {barrier});
+
+	// Pass 2: Multi-Scatter — 32x32 texels, one thread GROUP per texel (64 threads inside each group do the integration)
+	cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *multiScatterLUTPipeline);
+	cmd.dispatch(32, 32, 1);        // one group per texel - no division needed, numthreads.z already covers the 64
 
 }
+
 
 // Create compute pipeline
 bool Renderer::createComputePipeline() {

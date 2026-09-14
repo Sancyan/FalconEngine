@@ -236,6 +236,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
   //TODO: FINISH ATMOSPHERECOMPUTE ENSURE ATMOPSPHERE RESOURCES EXIST BEFORE SHADER DISPATCH
   if (!createAtmosphereCompute())
   {
+      setAtmoSphereParams();
 	  std::cerr << "Failed to create atmosphere pipeline" << std::endl;
 	  return false;
     
@@ -244,6 +245,12 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
   if (!createAtmosphereCommandPool())
   {
 	  std::cerr << "Failed to create atmosphere Command Pool!" << std::endl;
+	  return false;
+  }
+
+  if (!createAtmosphereResources())
+  {
+	  std::cerr << "Failed to create atmosphere Resources" << std::endl;
 	  return false;
   }
 
