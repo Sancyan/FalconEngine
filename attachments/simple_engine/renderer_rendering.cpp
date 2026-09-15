@@ -1782,6 +1782,9 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     return;
   }
 
+  //Generate LUTs 
+  generateAtmosphereLUTs(commandBuffers[currentFrame], atmoParams);
+
   // Ray query rendering mode dispatch
   if (currentRenderMode == RenderMode::RayQuery && rayQueryEnabled && accelerationStructureEnabled) {
     // Check if TLAS handle is valid (dereference RAII handle)

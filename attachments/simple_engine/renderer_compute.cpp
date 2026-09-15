@@ -29,15 +29,15 @@ bool Renderer::createAtmosphereCompute()
 		vk::raii::ShaderModule            transmittanceModule = createShaderModule(transmittanceCode);
 		vk::PipelineShaderStageCreateInfo transmittanceStageInfo{
 		    .stage = vk::ShaderStageFlagBits::eCompute, .module = *transmittanceModule, .pName = "main"};
-		transmittanceLUTPipeline = vk::raii::Pipeline(device, nullptr,
-		                                              vk::ComputePipelineCreateInfo{.stage = transmittanceStageInfo, .layout = *atmoSpherePipelineLayout});
+		//transmittanceLUTPipeline = vk::raii::Pipeline(device, nullptr,
+		//                                              vk::ComputePipelineCreateInfo{.stage = transmittanceStageInfo, .layout = *atmoSpherePipelineLayout});
 
 		auto                              multiScatterCode   = readFile("shaders/MultiScatterLUT.spv");
 		vk::raii::ShaderModule            multiScatterModule = createShaderModule(multiScatterCode);
 		vk::PipelineShaderStageCreateInfo multiScatterStageInfo{
 		    .stage = vk::ShaderStageFlagBits::eCompute, .module = *multiScatterModule, .pName = "main"};
-		multiScatterLUTPipeline = vk::raii::Pipeline(device, nullptr,
-		                                             vk::ComputePipelineCreateInfo{.stage = multiScatterStageInfo, .layout = *atmoSpherePipelineLayout});
+		//multiScatterLUTPipeline = vk::raii::Pipeline(device, nullptr,
+		//                                             vk::ComputePipelineCreateInfo{.stage = multiScatterStageInfo, .layout = *atmoSpherePipelineLayout});
 
 
         //Create descriptor set layout for atmosphere
@@ -77,12 +77,12 @@ bool Renderer::createAtmosphereCompute()
 
 		};
 
-        vk::DescriptorSetLayoutCreateInfo atmosphereLayoutInfo{
+        vk::DescriptorSetLayoutCreateInfo atmosphereDescriptorLayoutInfo{
 		    .bindingCount = static_cast<uint32_t>(atmosphereBindings.size()),
 		    .pBindings    = atmosphereBindings.data()
         };
 
-        atmosphereDescriptorSetLayout = vk::raii::DescriptorSetLayout(device, atmosphereLayoutInfo);
+        atmosphereDescriptorSetLayout = vk::raii::DescriptorSetLayout(device, atmosphereDescriptorLayoutInfo);
 
 
         //Create info pipeline for atmosphere
@@ -96,18 +96,18 @@ bool Renderer::createAtmosphereCompute()
 
         atmoSpherePipelineLayout = vk::raii::PipelineLayout(device, atmospherePipelineLayoutInfo);
 
-        vk::ComputePipelineCreateInfo atmospherePipelineInfo{
+        vk::ComputePipelineCreateInfo transmittancePipelineInfo{
 		    .stage  = transmittanceStageInfo,
 		    .layout = *atmoSpherePipelineLayout
         };
 
-        transmittanceLUTPipeline = vk::raii::Pipeline(device, nullptr,atmospherePipelineInfo);
+        transmittanceLUTPipeline = vk::raii::Pipeline(device, nullptr, transmittancePipelineInfo);
 
-                vk::ComputePipelineCreateInfo atmospherePipelineInfo{
+                vk::ComputePipelineCreateInfo multiscatterPipelineInfo{
 		    .stage  = multiScatterStageInfo,
 		    .layout = *atmoSpherePipelineLayout};
 
-		multiScatterLUTPipeline = vk::raii::Pipeline(device, nullptr, atmospherePipelineInfo);
+		multiScatterLUTPipeline = vk::raii::Pipeline(device, nullptr, multiscatterPipelineInfo);
 
         std::array<vk::DescriptorPoolSize, 4> atmospherePoolSizes = {
 		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1u}, //Atmo params

@@ -11,9 +11,9 @@ static const float SAMPLE_COUNT_INI  = 20.0f; // Ray-march steps per direction; 
 groupshared float3 gMultiScatAs1Shared[64];
 groupshared float3 gLShared[64];
 
-[shader("compute")]
+[[shader("compute")]]
 [numthreads(1, 1, 64)]
-void csMain(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 groupThreadID : SV_GroupThreadID)
+void main(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 groupThreadID : SV_GroupThreadID)
 {
     AtmosphereParameters atmosphere = gAtmosphere;
     float lutRes = gAtmosphere.MultiScatteringLUTRes;

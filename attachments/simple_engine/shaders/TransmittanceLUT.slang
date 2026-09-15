@@ -5,9 +5,9 @@ RWTexture2D<float4> gTransmittanceLUTOut;
 
 static const float SAMPLE_COUNT = 40.0f;
 
-[shader("compute")]
+[[shader("compute")]]
 [numthreads(8, 8, 1)]
-void csMain(uint3 dispatchThreadID : SV_DispatchThreadID)
+void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
     uint width  = uint(gAtmosphere.TRANSMITTANCE_TEXTURE_WIDTH);
     uint height = uint(gAtmosphere.TRANSMITTANCE_TEXTURE_HEIGHT);
