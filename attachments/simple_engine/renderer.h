@@ -1861,6 +1861,7 @@ class Renderer {
     void refreshForwardPlusComputeLightsBindingForFrame(uint32_t frameIndex);
 	bool createAtmosphereCompute();
 	bool createAtmosphereResources();
+	void generateAtmosphereLUTs(vk::raii::CommandBuffer &cmd, const Renderer::AtmosphereParameters &params);
 	bool createComputePipeline();
     void pushMaterialProperties(vk::CommandBuffer commandBuffer, const MaterialProperties& material) const;
     bool createCommandPool();

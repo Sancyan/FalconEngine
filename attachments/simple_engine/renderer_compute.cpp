@@ -243,16 +243,14 @@ bool Renderer::createAtmosphereCommandPool()
 	}
 }
 
-void Renderer::dispatchAtmoSphereRender(uint32_t groupCountX,
-    uint32_t groupCountY,
-     uint32_t groupCountZ, vk::raii::CommandBuffer &cmd, const Renderer::AtmosphereParameters &params)
-{
-
-}
+//void Renderer::dispatchAtmoSphereRender(vk::raii::CommandBuffer &cmd, const Renderer::AtmosphereParameters &params)
+//{
+//
+//}
 
 void Renderer::generateAtmosphereLUTs(vk::raii::CommandBuffer& cmd, const Renderer::AtmosphereParameters& params)
 {
-	std::memcpy(atmosphereParamsMapped, &params, sizeof(Renderer::AtmosphereParameters));
+	std::memcpy(atmosphereParamsMapped, &params, sizeof(AtmosphereParameters));
 
 	// Pass 1: Transmittance — 256x64 texels, 8x8 threads/group
 	cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *transmittanceLUTPipeline);
