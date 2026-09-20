@@ -74,5 +74,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 groupThreadID : SV
     float3 sumOfAllOrders = 1.0f / (1.0f - multiScatAs1); // Equation 10, Psi_ms
     float3 L = inScatteredLuminance * sumOfAllOrders;
 
+   // printf("The value is: %f\n", float4(gAtmosphere.MultipleScatteringFactor * L, 1.0f));
+
     gMultiScatteringLUTOut[dispatchThreadID.xy] = float4(gAtmosphere.MultipleScatteringFactor * L, 1.0f);
 }

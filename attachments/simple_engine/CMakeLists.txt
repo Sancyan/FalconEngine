@@ -102,10 +102,14 @@ if(SLANGC_EXECUTABLE)
     foreach(SHADER ${SLANG_SHADER_SOURCES})
         get_filename_component(SHADER_NAME ${SHADER} NAME)
         get_filename_component(SHADER_NAME_WE ${SHADER_NAME} NAME_WE)
+
+        #DEBUGSHADERS
+
+
         string(REGEX REPLACE "\.slang$" "" OUTPUT_NAME ${SHADER_NAME})
         add_custom_command(
             OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv
-            COMMAND ${SLANGC_EXECUTABLE} ${SHADER} -target spirv -profile spirv_1_4 -emit-spirv-directly -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv
+            COMMAND ${SLANGC_EXECUTABLE} ${SHADER} -target spirv -profile spirv_1_4 -emit-spirv-directly -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv -g2
             DEPENDS ${SHADER}
             COMMENT "Compiling Slang shader ${SHADER_NAME} with slangc"
         )

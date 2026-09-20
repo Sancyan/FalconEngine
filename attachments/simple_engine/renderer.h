@@ -1240,7 +1240,7 @@ class Renderer {
     vk::raii::Pipeline depthPrepassPipeline = nullptr;
 
     // Ray query rendering mode
-    RenderMode currentRenderMode = RenderMode::RayQuery;
+    RenderMode currentRenderMode = RenderMode::Rasterization;
 
     // Ray query pipeline and resources
     vk::raii::PipelineLayout rayQueryPipelineLayout = nullptr;

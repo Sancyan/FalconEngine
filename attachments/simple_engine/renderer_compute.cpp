@@ -59,18 +59,21 @@ bool Renderer::createAtmosphereCompute()
 			vk::DescriptorSetLayoutBinding{
 			    .binding            = 2,
 			    .descriptorType     = vk::DescriptorType::eSampler,
+                .descriptorCount    = 1,
 			    .stageFlags         = vk::ShaderStageFlagBits::eCompute,
 			    .pImmutableSamplers = nullptr
         },
 			vk::DescriptorSetLayoutBinding{
 			    .binding            = 3,
 			    .descriptorType     = vk::DescriptorType::eStorageImage,
+		        .descriptorCount    = 1,
 			    .stageFlags         = vk::ShaderStageFlagBits::eCompute,
 			    .pImmutableSamplers = nullptr
         },
             vk::DescriptorSetLayoutBinding{
                 .binding = 4, 
                 .descriptorType = vk::DescriptorType::eStorageImage,
+		        .descriptorCount    = 1,
                 .stageFlags = vk::ShaderStageFlagBits::eCompute,
                 .pImmutableSamplers = nullptr
         }

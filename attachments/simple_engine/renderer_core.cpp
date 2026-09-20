@@ -236,7 +236,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
   //TODO: FINISH ATMOSPHERECOMPUTE ENSURE ATMOPSPHERE RESOURCES EXIST BEFORE SHADER DISPATCH
   if (!createAtmosphereCompute())
   {
-      setAtmoSphereParams();
+     
 	  std::cerr << "Failed to create atmosphere pipeline" << std::endl;
 	  return false;
     
@@ -253,6 +253,8 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
 	  std::cerr << "Failed to create atmosphere Resources" << std::endl;
 	  return false;
   }
+
+   setAtmoSphereParams();
 
   // Ensure light storage buffers exist before creating Forward+ resources
   // so that compute descriptor binding 0 (lights SSBO) can be populated safely.

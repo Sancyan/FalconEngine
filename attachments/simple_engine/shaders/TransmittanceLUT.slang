@@ -28,5 +28,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 opticalDepth = IntegrateOpticalDepth(atmosphere, worldPos, worldDir, SAMPLE_COUNT);
     float3 transmittance = exp(-opticalDepth);
 
+    //printf("The value is: %f\n", float4(transmittance, 1.0f));
+
+    //gTransmittanceLUTOut[dispatchThreadID.xy] = float4(1.0f, 0.0f, 0.0f, 1.0f);
+
     gTransmittanceLUTOut[dispatchThreadID.xy] = float4(transmittance, 1.0f);
 }
