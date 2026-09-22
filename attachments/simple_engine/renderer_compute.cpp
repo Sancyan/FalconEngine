@@ -29,19 +29,23 @@ bool Renderer::createAtmosphereCompute()
 		vk::raii::ShaderModule            transmittanceModule = createShaderModule(transmittanceCode);
 		vk::PipelineShaderStageCreateInfo transmittanceStageInfo{
 		    .stage = vk::ShaderStageFlagBits::eCompute, .module = *transmittanceModule, .pName = "main"};
-		//transmittanceLUTPipeline = vk::raii::Pipeline(device, nullptr,
-		//                                              vk::ComputePipelineCreateInfo{.stage = transmittanceStageInfo, .layout = *atmoSpherePipelineLayout});
+
 
 		auto                              multiScatterCode   = readFile("shaders/MultiScatterLUT.spv");
 		vk::raii::ShaderModule            multiScatterModule = createShaderModule(multiScatterCode);
 		vk::PipelineShaderStageCreateInfo multiScatterStageInfo{
 		    .stage = vk::ShaderStageFlagBits::eCompute, .module = *multiScatterModule, .pName = "main"};
-		//multiScatterLUTPipeline = vk::raii::Pipeline(device, nullptr,
-		//                                             vk::ComputePipelineCreateInfo{.stage = multiScatterStageInfo, .layout = *atmoSpherePipelineLayout});
+
+
+        auto skyViewCode = readFile("shaders/SkyViewLut.spv");
+		vk::raii::ShaderModule skyViewModule = createShaderModule(skyViewCode);
+		vk::PipelineShaderStageCreateInfo skyViewStageInfo{
+		    .stage = vk::ShaderStageFlagBits::eCompute, .module = *skyViewModule, .pName = "main"};
+
 
 
         //Create descriptor set layout for atmosphere
-        std::array<vk::DescriptorSetLayoutBinding, 5> atmosphereBindings = {
+        std::array<vk::DescriptorSetLayoutBinding, 7> atmosphereBindings = {
 		    vk::DescriptorSetLayoutBinding{
 		        .binding            = 0,
 		        .descriptorType     = vk::DescriptorType::eUniformBuffer,
@@ -76,7 +80,18 @@ bool Renderer::createAtmosphereCompute()
 		        .descriptorCount    = 1,
                 .stageFlags = vk::ShaderStageFlagBits::eCompute,
                 .pImmutableSamplers = nullptr
-        }
+        }, vk::DescriptorSetLayoutBinding{
+		        .binding            = 5,
+		        .descriptorType     = vk::DescriptorType::eSampledImage,//Multiscatter read binding 5
+		        .descriptorCount    = 1,
+		        .stageFlags         = vk::ShaderStageFlagBits::eCompute,
+		        .pImmutableSamplers = nullptr},
+		    vk::DescriptorSetLayoutBinding{
+		        .binding            = 6,
+		        .descriptorType     = vk::DescriptorType::eStorageImage,// SkyView LUT write binding 6
+		        .descriptorCount    = 1,
+		        .stageFlags         = vk::ShaderStageFlagBits::eCompute,
+		        .pImmutableSamplers = nullptr}
 
 		};
 
@@ -87,14 +102,19 @@ bool Renderer::createAtmosphereCompute()
 
         atmosphereDescriptorSetLayout = vk::raii::DescriptorSetLayout(device, atmosphereDescriptorLayoutInfo);
 
+        vk::PushConstantRange skyViewPushRange{
+		    .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		    .offset     = 0,
+		    .size       = sizeof(float) * 4        // Sundirection float3 + viewHeight float
+		};
 
-        //Create info pipeline for atmosphere
+        //Create info pipeline for atmosphere along with push constant range
         vk::PipelineLayoutCreateInfo atmospherePipelineLayoutInfo
 		{
 			.setLayoutCount         = 1,
 			.pSetLayouts            = &*atmosphereDescriptorSetLayout,
-			.pushConstantRangeCount = 0,
-            .pPushConstantRanges = nullptr
+			.pushConstantRangeCount = 1,
+            .pPushConstantRanges = &skyViewPushRange
 		};
 
         atmoSpherePipelineLayout = vk::raii::PipelineLayout(device, atmospherePipelineLayoutInfo);
@@ -106,17 +126,26 @@ bool Renderer::createAtmosphereCompute()
 
         transmittanceLUTPipeline = vk::raii::Pipeline(device, nullptr, transmittancePipelineInfo);
 
-                vk::ComputePipelineCreateInfo multiscatterPipelineInfo{
+        vk::ComputePipelineCreateInfo multiscatterPipelineInfo{
 		    .stage  = multiScatterStageInfo,
-		    .layout = *atmoSpherePipelineLayout};
+		    .layout = *atmoSpherePipelineLayout
+        };
 
 		multiScatterLUTPipeline = vk::raii::Pipeline(device, nullptr, multiscatterPipelineInfo);
 
+
+        vk::ComputePipelineCreateInfo skyViewPipelineInfo{
+		    .stage  = skyViewStageInfo,
+		    .layout = *atmoSpherePipelineLayout
+        };
+
+        computePipeline = vk::raii::Pipeline(device, nullptr, skyViewPipelineInfo);
+
         std::array<vk::DescriptorPoolSize, 4> atmospherePoolSizes = {
 		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1u}, //Atmo params
-		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eSampledImage, .descriptorCount = 1u},//Transmittance LUT Read
+		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eSampledImage, .descriptorCount = 2u},//Transmittance LUT Read and multiscatter read
 		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eSampler, .descriptorCount = 1u},// Linear clamp sampler
-		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eStorageImage, .descriptorCount = 2u}, //Multi and Transmittance Write
+		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eStorageImage, .descriptorCount = 3u}, //Multi Transmittance, and skyview Write
 		};
 
         vk::DescriptorPoolCreateInfo atmoPoolInfo{
@@ -146,7 +175,8 @@ bool Renderer::createAtmosphereResources()
 		constexpr uint32_t   kTransmittanceW  = 256;
 		constexpr uint32_t   kTransmittanceH  = 64;
 		constexpr uint32_t   kMultiScatterRes = 32;
-		constexpr vk::Format kLutFormat       = vk::Format::eR16G16B16A16Sfloat;
+		constexpr uint32_t   kSkyViewW = 192, kSkyViewH = 108;
+		constexpr vk::Format kLutFormat = vk::Format::eR16G16B16A16Sfloat;
 
 		// --- Transmittance LUT image ---
 		std::tie(transmittanceLUTImage, transmittanceLUTAllocation) = createImagePooled(
@@ -172,7 +202,15 @@ bool Renderer::createAtmosphereResources()
 		transitionImageLayout(*multiScatterLUTImage, kLutFormat,
 		                      vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
 
-		// --- Linear clamp sampler, shared by both LUTs ---
+		// -- Sky View LUT Image --
+		std::tie(skyViewLUTImage, skyViewLUTAllocation) = createImagePooled(
+		    kSkyViewW, kSkyViewH, kLutFormat, vk::ImageTiling::eOptimal,
+		    vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
+		    vk::MemoryPropertyFlagBits::eDeviceLocal);
+		skyViewLUTView = createImageView(skyViewLUTImage, kLutFormat, vk::ImageAspectFlagBits::eColor);
+		transitionImageLayout(*skyViewLUTImage, kLutFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+
+		// --- Linear clamp sampler, shared by both transmittance and Multiscatter ---
 		vk::SamplerCreateInfo samplerInfo{
 		    .magFilter        = vk::Filter::eLinear,
 		    .minFilter        = vk::Filter::eLinear,
@@ -208,13 +246,18 @@ bool Renderer::createAtmosphereResources()
 		vk::DescriptorImageInfo  samplerOnlyInfo{.sampler = *atmosphereLUTSampler};
 		vk::DescriptorImageInfo  transmittanceWriteInfo{.imageView = *transmittanceLUTView, .imageLayout = vk::ImageLayout::eGeneral};
 		vk::DescriptorImageInfo  multiScatterWriteInfo{.imageView = *multiScatterLUTView, .imageLayout = vk::ImageLayout::eGeneral};
+		vk::DescriptorImageInfo  multiScatterReadinfo{.imageView = *multiScatterLUTView, .imageLayout = vk::ImageLayout::eGeneral};
+		vk::DescriptorImageInfo  skyViewWriteInfo{.imageView = *skyViewLUTView, .imageLayout = vk::ImageLayout::eGeneral};
 
-		std::array<vk::WriteDescriptorSet, 5> writes{
+		std::array<vk::WriteDescriptorSet, 7> writes{
 		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &paramsInfo},
 		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 1, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eSampledImage, .pImageInfo = &transmittanceReadInfo},
 		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 2, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eSampler, .pImageInfo = &samplerOnlyInfo},
 		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 3, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageImage, .pImageInfo = &transmittanceWriteInfo},
 		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 4, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageImage, .pImageInfo = &multiScatterWriteInfo},
+		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 5, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eSampledImage, .pImageInfo = &multiScatterReadinfo},
+		    vk::WriteDescriptorSet{.dstSet = *atmoSphereDescriptorSets[0], .dstBinding = 6, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageImage, .pImageInfo = &skyViewWriteInfo}
+
 		};
 		device.updateDescriptorSets(writes, nullptr);
 

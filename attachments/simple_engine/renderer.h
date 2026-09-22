@@ -1123,6 +1123,13 @@ class Renderer {
 	vk::raii::DeviceMemory atmosphereParamsBufferMemory = nullptr;
 	void                  *atmosphereParamsMapped       = nullptr;
 
+    //SkyView LUT Pipeline
+
+    vk::raii::Image                         skyViewLUTImage      = nullptr;
+	std::unique_ptr<MemoryPool::Allocation> skyViewLUTAllocation = nullptr;
+	vk::raii::ImageView                     skyViewLUTView       = nullptr;
+	vk::raii::Pipeline                      skyViewLUTPipeline   = nullptr;
+
 
 
     //Atmosphere Params
