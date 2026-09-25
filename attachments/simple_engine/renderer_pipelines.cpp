@@ -214,17 +214,49 @@ bool Renderer::createPBRDescriptorSetLayout() {
     pbrDescriptorSetLayout = vk::raii::DescriptorSetLayout(device, layoutInfo);
 
     // Binding 7: transparent passes input
-    // Layout for Set 1: Just the scene color texture
-    vk::DescriptorSetLayoutBinding sceneColorBinding{
-      .binding = 0, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment
-    };
-    vk::DescriptorSetLayoutCreateInfo transparentLayoutInfo{.bindingCount = 1, .pBindings = &sceneColorBinding};
+    // Layout for Set 1: Just the scene color texture and added Depth and skyviewparams ubo
+
+   
+    std::array<vk::DescriptorSetLayoutBinding, 3> transparentBindingsSetInfo = {
+        vk::DescriptorSetLayoutBinding { //sceneColorBinding
+		    .binding = 0, 
+            .descriptorType = vk::DescriptorType::eCombinedImageSampler, 
+            .descriptorCount = 1, 
+            .stageFlags = vk::ShaderStageFlagBits::eFragment,
+            .pImmutableSamplers = nullptr},
+		vk::DescriptorSetLayoutBinding{
+		    .binding         = 1,
+		    .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
+		    .descriptorCount = 1,
+		    .stageFlags      = vk::ShaderStageFlagBits::eFragment,
+		    .pImmutableSamplers = nullptr},
+        vk::DescriptorSetLayoutBinding{
+            .binding = 2,
+            .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+            .descriptorCount = 1,
+            .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		    .pImmutableSamplers = nullptr
+        }
+	};
+
+
+    //vk::DescriptorSetLayoutBinding sceneColorBinding{
+    //  .binding = 0, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment
+    //};
+
+    vk::DescriptorSetLayoutCreateInfo transparentLayoutInfo{.bindingCount = 3, .pBindings = transparentBindingsSetInfo.data()};
     if (descriptorIndexingEnabled) {
       // Make this sampler binding update-after-bind safe as well (optional)
       vk::DescriptorSetLayoutBindingFlagsCreateInfo transBindingFlagsInfo{};
-      vk::DescriptorBindingFlags transFlags = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
-      transBindingFlagsInfo.bindingCount = 1;
-      transBindingFlagsInfo.pBindingFlags = &transFlags;
+	  std::array<vk::DescriptorBindingFlags, 3>     transFlags = {
+          vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending,
+          vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending,
+	      vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending
+
+	  };
+          vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
+	  transBindingFlagsInfo.bindingCount  = static_cast<uint32_t>(transFlags.size());
+      transBindingFlagsInfo.pBindingFlags = transFlags.data();
       transparentLayoutInfo.flags |= vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool;
       transparentLayoutInfo.pNext = &transBindingFlagsInfo;
 
@@ -785,7 +817,7 @@ bool Renderer::createCompositePipeline() {
     vk::PipelineRasterizationStateCreateInfo rasterizer{.polygonMode = vk::PolygonMode::eFill, .cullMode = vk::CullModeFlagBits::eNone, .frontFace = vk::FrontFace::eCounterClockwise, .lineWidth = 1.0f};
     vk::PipelineMultisampleStateCreateInfo multisampling{.rasterizationSamples = vk::SampleCountFlagBits::e1};
     // No depth
-    vk::PipelineDepthStencilStateCreateInfo depthStencil{.depthTestEnable = VK_FALSE, .depthWriteEnable = VK_FALSE};
+    vk::PipelineDepthStencilStateCreateInfo depthStencil{.depthTestEnable = VK_TRUE, .depthWriteEnable = VK_TRUE};
     // No blending (we clear swapchain before this and blend transparents later)
     vk::PipelineColorBlendAttachmentState attachment{
       .blendEnable = VK_FALSE,
