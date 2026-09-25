@@ -14,7 +14,7 @@ cbuffer SkyViewPushConstants
     float  gViewHeight;
 };
 
-static const uint2 SKY_VIEW_LUT_RES = uint2(192, 108);
+static const uint2 SKY_VIEW_LUT_RES = uint2(192, 128);//Originally 108
 static const float SAMPLE_COUNT = 30.0f;
 
 // Hillaire's non-linear UV mapping: puts more texel density near the horizon,
@@ -70,5 +70,13 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     ScatterIntegrationResult r = IntegrateScatteredLuminance(atmosphere, worldPos, worldDir, normalize(gSunDirection), false, SAMPLE_COUNT);
 
-    gSkyViewLUTOut[dispatchThreadID.xy] = float4(r.L, 1.0f);
+    // Multi-scattering LUT is parameterized by (cosSunZenithAngle, viewHeight) - same
+    // mapping MultiScatterLUT.slang used to write it, inverted here to read it back.
+    float cosSunZenithAngle = dot(normalize(gSunDirection), float3(0, 0, 1));
+    float2 msUv = float2(
+    saturate(cosSunZenithAngle * 0.5f + 0.5f),
+               saturate((gViewHeight - atmosphere.BottomRadius) / (atmosphere.TopRadius - atmosphere.BottomRadius)));
+    float3 multiScatLuminance = gMultiScatteringLUT.SampleLevel(gLinearClampSampler, msUv, 0).rgb;
+
+    gSkyViewLUTOut[dispatchThreadID.xy] = float4(r.L + multiScatLuminance, 1.0f);
 }

@@ -15,9 +15,7 @@ public struct ScatterIntegrationResult
 // IntegrateScatteredLuminance: dropped are the depth-buffer intersection branch, the
 // variable-sample-count branch, the shadow-map lookup, and the debug-line hooks -- none
 // of the LUT passes ever exercise those branches (they're only meaningful for the
-// full-resolution ray-marched render). Also dropped: the source's
-// NewMultiScatStep0Out / NewMultiScatStep1Out accumulators, which are written but never
-// read anywhere in the reference codebase.
+// full-resolution ray-marched render).
 public ScatterIntegrationResult IntegrateScatteredLuminance(
     AtmosphereParameters Atmosphere, float3 WorldPos, float3 WorldDir, float3 SunDir,
     bool ground, float sampleCount)

@@ -254,7 +254,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
 	  return false;
   }
 
-   setAtmoSphereParams();
+  // setAtmoSphereParams();
 
   // Ensure light storage buffers exist before creating Forward+ resources
   // so that compute descriptor binding 0 (lights SSBO) can be populated safely.

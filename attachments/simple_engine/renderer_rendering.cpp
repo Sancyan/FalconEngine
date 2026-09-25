@@ -1782,8 +1782,19 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     return;
   }
 
-  //Generate LUTs 
-  generateAtmosphereLUTs(commandBuffers[currentFrame], atmoParams);
+  //Check if atmosphere params changed
+  if (atmoManager.getIsDirty())
+  {
+	  atmoManager.setAtmoSphereParams();
+	  // Generate LUTs
+	  generateAtmosphereLUTs(commandBuffers[currentFrame], atmoManager.getAtmoParams());
+	  atmoManager.clean();
+  }
+
+
+  glm::vec3 sundirection = glm::vec3(-.5, -.25, -.5);
+  float     viewHeight   = 100.0;
+  dispatchAtmoSphereRender(commandBuffers[currentFrame], sundirection, viewHeight);
 
   // Ray query rendering mode dispatch
   if (currentRenderMode == RenderMode::RayQuery && rayQueryEnabled && accelerationStructureEnabled) {

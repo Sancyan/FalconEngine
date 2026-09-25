@@ -295,6 +295,87 @@ class Renderer {
 
 		int TRANSMITTANCE_TEXTURE_HEIGHT;
 	};
+
+    class AtmosphereManager
+    {
+	  public:
+
+          AtmosphereManager()
+          {
+			  atmoParams.BottomRadius                   = 6360;
+			  atmoParams.TopRadius                      = 6460;
+			  atmoParams.RayleighScattering             = glm::vec3(0.005802, 0.013558, 0.033100);
+			  atmoParams.RayleighDensityExpScale        = -1 / 8;
+			  atmoParams.MieScattering                  = glm::vec3(0.003996, 0.003996, 0.003996);
+			  atmoParams.MieExtinction                  = glm::vec3(0.004440, 0.004440, 0.004440);
+			  atmoParams.MieAbsorption                  = atmoParams.MieExtinction - atmoParams.MieScattering;
+			  atmoParams.MieDensityExpScale             = -1 / 1.2;
+			  atmoParams.MiePhaseG                      = 0.8;
+			  atmoParams.AbsorptionExtinction           = glm::vec3(0.000650, 0.001881, 0.000085);
+			  atmoParams.AbsorptionDensity0LayerWidth   = 25.0;
+			  atmoParams.AbsorptionDensity0ConstantTerm = -2 / 3;
+			  atmoParams.AbsorptionDensity0LinearTerm   = 1 / 15;
+			  atmoParams.AbsorptionDensity1ConstantTerm = 8 / 3;
+			  atmoParams.AbsorptionDensity1LinearTerm   = -1 / 15;
+			  atmoParams.GroundAlbedo                   = glm::vec3(0.0, 0.0, 0.0);
+			  atmoParams.MultipleScatteringFactor       = 1.0;
+			  atmoParams.MultiScatteringLUTRes          = 32.0;
+			  atmoParams.TRANSMITTANCE_TEXTURE_WIDTH    = 256;
+			  atmoParams.TRANSMITTANCE_TEXTURE_HEIGHT   = 64;
+          }
+
+          bool getIsDirty()
+        {
+			  return isDirty;
+        }
+
+          void paramChange(AtmosphereParameters newParams)
+        {
+			atmoParams = newParams;
+			isDirty = true;
+        }
+
+        void clean()
+        {
+			  isDirty = false;
+        }
+
+        void setAtmoSphereParams()
+		{
+			atmoParams.BottomRadius                   = 6360;
+			atmoParams.TopRadius                      = 6460;
+			atmoParams.RayleighScattering             = glm::vec3(0.005802, 0.013558, 0.033100);
+			atmoParams.RayleighDensityExpScale        = -1 / 8;
+			atmoParams.MieScattering                  = glm::vec3(0.003996, 0.003996, 0.003996);
+			atmoParams.MieExtinction                  = glm::vec3(0.004440, 0.004440, 0.004440);
+			atmoParams.MieAbsorption                  = atmoParams.MieExtinction - atmoParams.MieScattering;
+			atmoParams.MieDensityExpScale             = -1 / 1.2;
+			atmoParams.MiePhaseG                      = 0.8;
+			atmoParams.AbsorptionExtinction           = glm::vec3(0.000650, 0.001881, 0.000085);
+			atmoParams.AbsorptionDensity0LayerWidth   = 25.0;
+			atmoParams.AbsorptionDensity0ConstantTerm = -2 / 3;
+			atmoParams.AbsorptionDensity0LinearTerm   = 1 / 15;
+			atmoParams.AbsorptionDensity1ConstantTerm = 8 / 3;
+			atmoParams.AbsorptionDensity1LinearTerm   = -1 / 15;
+			atmoParams.GroundAlbedo                   = glm::vec3(0.0, 0.0, 0.0);
+			atmoParams.MultipleScatteringFactor       = 1.0;
+			atmoParams.MultiScatteringLUTRes          = 32.0;
+			atmoParams.TRANSMITTANCE_TEXTURE_WIDTH    = 256;
+			atmoParams.TRANSMITTANCE_TEXTURE_HEIGHT   = 64;
+		}
+
+        AtmosphereParameters getAtmoParams()
+        {
+			return atmoParams;
+        }
+
+
+
+	  private:
+		AtmosphereParameters atmoParams{};
+		bool                 isDirty = true;
+
+    };
     /**
 	 * @brief Constructor with a platform.
 	 * @param platform The platform to use for rendering.
@@ -1133,32 +1214,10 @@ class Renderer {
 
 
     //Atmosphere Params
-	AtmosphereParameters atmoParams{};
+	AtmosphereManager atmoManager{};
+	//AtmosphereParameters atmoParams{};
 
-    void setAtmoSphereParams()
-    {
-		atmoParams.BottomRadius                   = 6360;
-		atmoParams.TopRadius                      = 6460;
-		atmoParams.RayleighScattering             = glm::vec3(0.005802, 0.013558, 0.033100);
-		atmoParams.RayleighDensityExpScale        = -1 / 8;
-		atmoParams.MieScattering                  = glm::vec3(0.003996, 0.003996, 0.003996);
-		atmoParams.MieExtinction                  = glm::vec3(0.004440, 0.004440, 0.004440);
-		atmoParams.MieAbsorption                  = atmoParams.MieExtinction - atmoParams.MieScattering;
-		atmoParams.MieDensityExpScale             = -1 / 1.2;
-		atmoParams.MiePhaseG                      = 0.8;
-		atmoParams.AbsorptionExtinction           = glm::vec3(0.000650, 0.001881, 0.000085);
-		atmoParams.AbsorptionDensity0LayerWidth   = 25.0;
-		atmoParams.AbsorptionDensity0ConstantTerm = -2 / 3;
-		atmoParams.AbsorptionDensity0LinearTerm   = 1 / 15;
-		atmoParams.AbsorptionDensity1ConstantTerm = 8 / 3;
-		atmoParams.AbsorptionDensity1LinearTerm   = -1 / 15;
-		atmoParams.GroundAlbedo                   = glm::vec3(0.0, 0.0, 0.0);
-		atmoParams.MultipleScatteringFactor       = 1.0;
-		atmoParams.MultiScatteringLUTRes          = 32.0;
-		atmoParams.TRANSMITTANCE_TEXTURE_WIDTH    = 256;
-		atmoParams.TRANSMITTANCE_TEXTURE_HEIGHT   = 64;
-        
-    }
+
 
     // Thread safety for queue access - unified mutex since queues may share the same underlying VkQueue
     mutable std::mutex queueMutex;
@@ -1873,6 +1932,8 @@ class Renderer {
     void pushMaterialProperties(vk::CommandBuffer commandBuffer, const MaterialProperties& material) const;
     bool createCommandPool();
 	bool createAtmosphereCommandPool();
+
+	void dispatchAtmoSphereRender(vk::raii::CommandBuffer &cmd, const glm::vec3 &sunDirection, float viewHeight);
 
     // Shadow mapping methods
     bool createComputeCommandPool();

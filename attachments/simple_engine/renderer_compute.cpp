@@ -48,35 +48,35 @@ bool Renderer::createAtmosphereCompute()
         std::array<vk::DescriptorSetLayoutBinding, 7> atmosphereBindings = {
 		    vk::DescriptorSetLayoutBinding{
 		        .binding            = 0,
-		        .descriptorType     = vk::DescriptorType::eUniformBuffer,
+		        .descriptorType     = vk::DescriptorType::eUniformBuffer,//Atmosphere params
 		        .descriptorCount    = 1,
 		        .stageFlags         = vk::ShaderStageFlagBits::eCompute,
 		        .pImmutableSamplers = nullptr
 	    },
 		    vk::DescriptorSetLayoutBinding{
 		        .binding            = 1,
-		        .descriptorType     = vk::DescriptorType::eSampledImage,
+		        .descriptorType     = vk::DescriptorType::eSampledImage,//Transmittance LUT Read
 		        .descriptorCount    = 1,
 		        .stageFlags         = vk::ShaderStageFlagBits::eCompute,
 		        .pImmutableSamplers = nullptr
         },
 			vk::DescriptorSetLayoutBinding{
 			    .binding            = 2,
-			    .descriptorType     = vk::DescriptorType::eSampler,
+			    .descriptorType     = vk::DescriptorType::eSampler,//Linear Clamp sampler
                 .descriptorCount    = 1,
 			    .stageFlags         = vk::ShaderStageFlagBits::eCompute,
 			    .pImmutableSamplers = nullptr
         },
 			vk::DescriptorSetLayoutBinding{
 			    .binding            = 3,
-			    .descriptorType     = vk::DescriptorType::eStorageImage,
+			    .descriptorType     = vk::DescriptorType::eStorageImage,//Transmittance LUT Write
 		        .descriptorCount    = 1,
 			    .stageFlags         = vk::ShaderStageFlagBits::eCompute,
 			    .pImmutableSamplers = nullptr
         },
             vk::DescriptorSetLayoutBinding{
                 .binding = 4, 
-                .descriptorType = vk::DescriptorType::eStorageImage,
+                .descriptorType = vk::DescriptorType::eStorageImage,//Multiscatter LUT Write
 		        .descriptorCount    = 1,
                 .stageFlags = vk::ShaderStageFlagBits::eCompute,
                 .pImmutableSamplers = nullptr
@@ -139,7 +139,7 @@ bool Renderer::createAtmosphereCompute()
 		    .layout = *atmoSpherePipelineLayout
         };
 
-        computePipeline = vk::raii::Pipeline(device, nullptr, skyViewPipelineInfo);
+        skyViewLUTPipeline = vk::raii::Pipeline(device, nullptr, skyViewPipelineInfo);
 
         std::array<vk::DescriptorPoolSize, 4> atmospherePoolSizes = {
 		    vk::DescriptorPoolSize{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1u}, //Atmo params
@@ -175,7 +175,9 @@ bool Renderer::createAtmosphereResources()
 		constexpr uint32_t   kTransmittanceW  = 256;
 		constexpr uint32_t   kTransmittanceH  = 64;
 		constexpr uint32_t   kMultiScatterRes = 32;
-		constexpr uint32_t   kSkyViewW = 192, kSkyViewH = 108;
+
+		constexpr uint32_t   kSkyViewW = 192, kSkyViewH = 128;//Orginally 108
+
 		constexpr vk::Format kLutFormat = vk::Format::eR16G16B16A16Sfloat;
 
 		// --- Transmittance LUT image ---
@@ -289,10 +291,22 @@ bool Renderer::createAtmosphereCommandPool()
 	}
 }
 
-//void Renderer::dispatchAtmoSphereRender(vk::raii::CommandBuffer &cmd, const Renderer::AtmosphereParameters &params)
-//{
-//
-//}
+void Renderer::dispatchAtmoSphereRender(vk::raii::CommandBuffer &cmd, const glm::vec3 &sunDirection, float viewHeight)
+{
+	vk::ImageMemoryBarrier barrier{
+	    .srcAccessMask = vk::AccessFlagBits::eShaderWrite, .dstAccessMask = vk::AccessFlagBits::eShaderRead, .oldLayout = vk::ImageLayout::eGeneral, .newLayout = vk::ImageLayout::eGeneral, .srcQueueFamilyIndex = vk::QueueFamilyIgnored, .dstQueueFamilyIndex = vk::QueueFamilyIgnored, .image = *multiScatterLUTImage, .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
+	cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader, {}, {}, {}, {barrier});
+
+	cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *skyViewLUTPipeline);
+	cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *atmoSpherePipelineLayout, 0, {*atmoSphereDescriptorSets[0]}, {});
+	struct
+	{
+		glm::vec3 sunDir;
+		float     viewHeight;
+	} pc{sunDirection, viewHeight};
+	cmd.pushConstants<decltype(pc)>(*atmoSpherePipelineLayout, vk::ShaderStageFlagBits::eCompute, 0, pc);
+	cmd.dispatch(24, 16, 1);        // ceil(192/8), ceil(108/8), NOTE: 108 is bumped up to 128 therefore y is changed to 16 groups of 8 y threads
+}
 
 void Renderer::generateAtmosphereLUTs(vk::raii::CommandBuffer& cmd, const Renderer::AtmosphereParameters& params)
 {

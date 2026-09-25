@@ -18,6 +18,7 @@
 // Fullscreen composite pass: samples the off-screen opaque color and writes to swapchain
 
 import tonemapping_utils;
+//import AtmosphereCore;
 
 struct VSOut {
     float4 Position : SV_POSITION;
@@ -40,6 +41,8 @@ struct VSOut {
 
 // Set 0, binding 0: combined image sampler for the off-screen scene color
 [[vk::binding(0, 0)]] Sampler2D sceneColor;
+[[vk::binding(1, 0)]] Sampler2D sceneDepth; //Set 0 binding 1 for scene depth values
+[[vk::binding(2, 0)]] Sampler2D skyViewLUT; //Set 0 binding 2 for skyViewLUT values
 
 struct Push {
     float exposure;
@@ -48,6 +51,43 @@ struct Push {
     float _pad;         // pad to 16 bytes for push constant layout
 };
 [[vk::push_constant]] Push pushConsts;
+
+//[[vk::binding(3, 0)]]
+//cbuffer SkyViewParams
+//{
+//    float4x4 gInvViewProj;
+//    float3 gCameraWorldPos; // kilometers, planet-space 
+//    float gViewHeight;
+//    float3 gSunDirection;
+//    float _pad0;
+//};
+
+//float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, AtmosphereParameters atmosphere)
+//{
+//    // Inverse of SkyViewLUT.slang's UvToSkyViewLutParams
+//    float viewZenithCosAngle = dir.z;
+//    float lightViewCosAngle = dot(normalize(float2(dir.x, dir.y)), normalize(float2(sunDir.x, sunDir.y)));
+
+//    float Vhorizon = sqrt(viewHeight * viewHeight - atmosphere.BottomRadius * atmosphere.BottomRadius);
+//    float CosBeta = Vhorizon / viewHeight;
+//    float Beta = acos(CosBeta);
+//    float ZenithHorizonAngle = PI - Beta;
+
+//    float coordY;
+//    if (viewZenithCosAngle > cos(ZenithHorizonAngle))
+//    {
+//        float coord = acos(viewZenithCosAngle) / ZenithHorizonAngle;
+//        coordY = 0.5f - 0.5f * sqrt(1.0f - coord);
+//    }
+//    else
+//    {
+//        float coord = (acos(viewZenithCosAngle) - ZenithHorizonAngle) / Beta;
+//        coordY = 0.5f + 0.5f * sqrt(coord);
+//    }
+
+//    float coordX = sqrt(saturate((1.0f - lightViewCosAngle) * 0.5f));
+//    return float2(coordX, coordY);
+//}
 
 // Export entrypoint for fragment stage
 [shader("fragment")] float4 PSMain(VSOut i) : SV_TARGET
