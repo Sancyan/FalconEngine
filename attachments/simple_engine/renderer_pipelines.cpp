@@ -816,7 +816,7 @@ bool Renderer::createCompositePipeline() {
     vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1, .scissorCount = 1};
     vk::PipelineRasterizationStateCreateInfo rasterizer{.polygonMode = vk::PolygonMode::eFill, .cullMode = vk::CullModeFlagBits::eNone, .frontFace = vk::FrontFace::eCounterClockwise, .lineWidth = 1.0f};
     vk::PipelineMultisampleStateCreateInfo multisampling{.rasterizationSamples = vk::SampleCountFlagBits::e1};
-    // Added depth
+    // No depth
     vk::PipelineDepthStencilStateCreateInfo depthStencil{.depthTestEnable = VK_TRUE, .depthWriteEnable = VK_TRUE};
     // No blending (we clear swapchain before this and blend transparents later)
     vk::PipelineColorBlendAttachmentState attachment{

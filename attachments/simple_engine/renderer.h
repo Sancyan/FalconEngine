@@ -1933,7 +1933,7 @@ class Renderer {
     bool createCommandPool();
 	bool createAtmosphereCommandPool();
 
-	void dispatchSkyViewLUT(vk::raii::CommandBuffer &cmd, const glm::vec3 &sunDirection, float viewHeight);
+	void dispatchAtmoSphereRender(vk::raii::CommandBuffer &cmd, const glm::vec3 &sunDirection, float viewHeight);
 
     // Shadow mapping methods
     bool createComputeCommandPool();

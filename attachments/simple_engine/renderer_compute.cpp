@@ -291,7 +291,7 @@ bool Renderer::createAtmosphereCommandPool()
 	}
 }
 
-void Renderer::dispatchSkyViewLUT(vk::raii::CommandBuffer &cmd, const glm::vec3 &sunDirection, float viewHeight)
+void Renderer::dispatchAtmoSphereRender(vk::raii::CommandBuffer &cmd, const glm::vec3 &sunDirection, float viewHeight)
 {
 	vk::ImageMemoryBarrier barrier{
 	    .srcAccessMask = vk::AccessFlagBits::eShaderWrite, .dstAccessMask = vk::AccessFlagBits::eShaderRead, .oldLayout = vk::ImageLayout::eGeneral, .newLayout = vk::ImageLayout::eGeneral, .srcQueueFamilyIndex = vk::QueueFamilyIgnored, .dstQueueFamilyIndex = vk::QueueFamilyIgnored, .image = *multiScatterLUTImage, .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};

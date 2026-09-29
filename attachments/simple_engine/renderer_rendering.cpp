@@ -1791,10 +1791,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 	  atmoManager.clean();
   }
 
-  // TODO: GET camera and sun direction to render logic 
+
   glm::vec3 sundirection = glm::vec3(-.5, -.25, -.5);
-  float     viewHeight   = 6380.0;
-  dispatchSkyViewLUT(commandBuffers[currentFrame], sundirection, viewHeight);
+  float     viewHeight   = 100.0;
+  dispatchAtmoSphereRender(commandBuffers[currentFrame], sundirection, viewHeight);
 
   // Ray query rendering mode dispatch
   if (currentRenderMode == RenderMode::RayQuery && rayQueryEnabled && accelerationStructureEnabled) {
