@@ -62,16 +62,16 @@ cbuffer SkyViewParams
     float3 gCameraWorldPos; // kilometers, planet-space 
     float gViewHeight;
     float3 gSunDirection;
-    float _pad0;
+    float gBotttomRadius;
 };
 
-float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, AtmosphereParameters atmosphere)
+float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, float gBotttomRadius)
 {
     // Inverse of SkyViewLUT.slang's UvToSkyViewLutParams
     float viewZenithCosAngle = dir.z;
     float lightViewCosAngle = dot(normalize(float2(dir.x, dir.y)), normalize(float2(sunDir.x, sunDir.y)));
 
-    float Vhorizon = sqrt(viewHeight * viewHeight - atmosphere.BottomRadius * atmosphere.BottomRadius);
+    float Vhorizon = sqrt(viewHeight * viewHeight - gBotttomRadius * gBotttomRadius);
     float CosBeta = Vhorizon / viewHeight;
     float Beta = acos(CosBeta);
     float ZenithHorizonAngle = PI - Beta;
@@ -95,7 +95,11 @@ float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, Atmosphe
 // Export entrypoint for fragment stage
 [shader("fragment")] float4 PSMain(VSOut i) : SV_TARGET
 {
-    // NOTE: Which depth convention? ANSWER:
+    // NOTE: Which depth convention?
+    //ANSWER: Camera_component.h	
+    // Common parameters
+   // float nearPlane = 0.1f;
+   // float farPlane = 100.0f;
     float depth = sceneDepth.Sample(i.UV).r;
 
     float4 c = sceneColor.Sample(i.UV);
@@ -117,8 +121,8 @@ float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, Atmosphe
         farWorld /= farWorld.w;
         float3 worldDir = normalize(farWorld.xyz - gCameraWorldPos);
 
-        AtmosphereParameters atmosphere = gAtmosphere;
-        float2 uv = WorldDirToSkyViewUv(worldDir, normalize(gSunDirection), gViewHeight, atmosphere);
+        //AtmosphereParameters atmosphere = gAtmosphere;
+        float2 uv = WorldDirToSkyViewUv(worldDir, normalize(gSunDirection), gViewHeight, gBotttomRadius);
         color = skyViewLUT.Sample(uv).rgb;
     }
     else
