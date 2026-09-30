@@ -217,7 +217,7 @@ bool Renderer::createPBRDescriptorSetLayout() {
     // Layout for Set 1: Just the scene color texture and added Depth and skyviewparams ubo
 
    
-    std::array<vk::DescriptorSetLayoutBinding, 3> transparentBindingsSetInfo = {
+    std::array<vk::DescriptorSetLayoutBinding, 4> transparentBindingsSetInfo = {
         vk::DescriptorSetLayoutBinding { //sceneColorBinding
 		    .binding = 0, 
             .descriptorType = vk::DescriptorType::eCombinedImageSampler, 
@@ -236,7 +236,13 @@ bool Renderer::createPBRDescriptorSetLayout() {
             .descriptorCount = 1,
             .stageFlags = vk::ShaderStageFlagBits::eFragment,
 		    .pImmutableSamplers = nullptr
-        }
+        }, vk::DescriptorSetLayoutBinding{
+            .binding = 3,
+            .descriptorType = vk::DescriptorType::eUniformBuffer,
+            .descriptorCount = 1,
+            .stageFlags = vk::ShaderStageFlagBits::eFragment,
+            .pImmutableSamplers = nullptr
+            }
 	};
 
 
@@ -244,17 +250,18 @@ bool Renderer::createPBRDescriptorSetLayout() {
     //  .binding = 0, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment
     //};
 
-    vk::DescriptorSetLayoutCreateInfo transparentLayoutInfo{.bindingCount = 3, .pBindings = transparentBindingsSetInfo.data()};
+    vk::DescriptorSetLayoutCreateInfo transparentLayoutInfo{.bindingCount = 4, .pBindings = transparentBindingsSetInfo.data()};
     if (descriptorIndexingEnabled) {
       // Make this sampler binding update-after-bind safe as well (optional)
       vk::DescriptorSetLayoutBindingFlagsCreateInfo transBindingFlagsInfo{};
-	  std::array<vk::DescriptorBindingFlags, 3>     transFlags = {
+	  std::array<vk::DescriptorBindingFlags, 4>     transFlags = {
           vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending,
           vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending,
-	      vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending
+	      vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending,
+          vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending
 
 	  };
-          vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
+         
 	  transBindingFlagsInfo.bindingCount  = static_cast<uint32_t>(transFlags.size());
       transBindingFlagsInfo.pBindingFlags = transFlags.data();
       transparentLayoutInfo.flags |= vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool;

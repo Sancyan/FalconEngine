@@ -1792,8 +1792,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   }
 
   // TODO: GET camera and sun direction to render logic 
-  glm::vec3 sundirection = glm::vec3(-.5, -.25, -.5);
-  float     viewHeight   = 6380.0;
+  glm::vec3 sundirection = glm::vec3(0.5, 0.25, 0.5);
+  float     viewHeight   = 6360.0f + 0.003f;
   dispatchSkyViewLUT(commandBuffers[currentFrame], sundirection, viewHeight);
 
   // Ray query rendering mode dispatch

@@ -253,6 +253,14 @@ class Renderer {
 	 * @brief Structure for atmopshere properties.
 	 * This structure must match the UBO structure in the atmosphere  shader.
 	 */
+	struct SkyViewParamsGPU
+	{
+		glm::mat4 invViewProj;
+		glm::vec3 cameraWorldPos;
+		float     viewHeight;
+		glm::vec3 sunDirection;
+		float     _pad1;
+	};
 	struct AtmosphereParameters
 	{
 		glm::vec3 RayleighScattering;
@@ -1210,6 +1218,10 @@ class Renderer {
 	std::unique_ptr<MemoryPool::Allocation> skyViewLUTAllocation = nullptr;
 	vk::raii::ImageView                     skyViewLUTView       = nullptr;
 	vk::raii::Pipeline                      skyViewLUTPipeline   = nullptr;
+
+    std::vector<vk::raii::Buffer>       skyViewParamsBuffers;
+	std::vector<vk::raii::DeviceMemory> skyViewParamsBuffersMemory;
+	std::vector<void *>                 skyViewParamsMapped;
 
 
 
