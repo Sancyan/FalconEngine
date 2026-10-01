@@ -1787,7 +1787,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   {
 	  atmoManager.setAtmoSphereParams();
 	  // Generate LUTs
-	  generateAtmosphereLUTs(commandBuffers[currentFrame], atmoManager.getAtmoParams());
+	  dispatchAtmosphereLUTs(commandBuffers[currentFrame], atmoManager.getAtmoParams());
 	  atmoManager.clean();
   }
 
@@ -1982,11 +1982,12 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         float exposure;
         float gamma;
         int outputIsSRGB;
-        float _pad;
+        float bottomRadius;
       } pc2{};
       pc2.exposure = std::clamp(this->exposure, 0.2f, 4.0f);
       pc2.gamma = this->gamma;
       pc2.outputIsSRGB = (swapChainImageFormat == vk::Format::eR8G8B8A8Srgb || swapChainImageFormat == vk::Format::eB8G8R8A8Srgb) ? 1 : 0;
+	  pc2.bottomRadius = 0.0f;
       commandBuffers[currentFrame].pushConstants<CompositePush>(*compositePipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pc2);
 
       commandBuffers[currentFrame].draw(3, 1, 0, 0);
@@ -2531,11 +2532,12 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         float exposure;
         float gamma;
         int outputIsSRGB;
-        float _pad;
+        float bottomRadius;
       } pc{};
       pc.exposure = std::clamp(this->exposure, 0.2f, 4.0f);
       pc.gamma = this->gamma;
       pc.outputIsSRGB = (swapChainImageFormat == vk::Format::eR8G8B8A8Srgb || swapChainImageFormat == vk::Format::eB8G8R8A8Srgb) ? 1 : 0;
+	  pc.bottomRadius = atmoManager.getAtmoParams().BottomRadius;
       commandBuffers[currentFrame].pushConstants<CompositePush>(*compositePipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pc);
 
       // Draw fullscreen triangle
