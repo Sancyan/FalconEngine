@@ -45,7 +45,16 @@ struct VSOut {
 // Set 0, binding 0: combined image sampler for the off-screen scene color
 [[vk::binding(0, 0)]] Sampler2D sceneColor;
 [[vk::binding(1, 0)]] Sampler2D sceneDepth; //Set 0 binding 1 for scene depth values
-[[vk::binding(2, 0)]] Sampler2D skyViewLUT; //Set 0 binding 2 for skyViewLUT values
+[[vk::binding(2, 0)]] Sampler2D skyViewLUT; // Set 0 binding 2 for skyViewLUT values
+[[vk::binding(3, 0)]]
+cbuffer SkyViewParams
+{
+    float4x4 gInvViewProj;
+    float3 gCameraWorldPos; // kilometers, planet-space
+    float gViewHeight;
+    float3 gSunDirection;
+    float gBotttomRadius;
+};
 
 struct Push {
     float exposure;
@@ -55,15 +64,7 @@ struct Push {
 };
 [[vk::push_constant]] Push pushConsts;
 
-[[vk::binding(3, 0)]]
-cbuffer SkyViewParams
-{
-    float4x4 gInvViewProj;
-    float3 gCameraWorldPos; // kilometers, planet-space 
-    float gViewHeight;
-    float3 gSunDirection;
-    float gBotttomRadius;
-};
+
 
 float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, float gBotttomRadius)
 {
