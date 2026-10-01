@@ -234,7 +234,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
   }
 
   //TODO: FINISH ATMOSPHERECOMPUTE ENSURE ATMOPSPHERE RESOURCES EXIST BEFORE SHADER DISPATCH
-  if (!createAtmosphereCompute())
+  if (!createAtmospherePipeline())
   {
      
 	  std::cerr << "Failed to create atmosphere pipeline" << std::endl;
@@ -254,7 +254,14 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
 	  return false;
   }
 
-  // setAtmoSphereParams();
+  //This is called after transparent set descriptor layout has been created
+  if (!createSkyViewParamsBuffers())
+  {
+	  std::cerr << "Failed to create buffers for Skyview parameters" << std::endl;
+	  return false;
+  }
+
+ 
 
   // Ensure light storage buffers exist before creating Forward+ resources
   // so that compute descriptor binding 0 (lights SSBO) can be populated safely.
