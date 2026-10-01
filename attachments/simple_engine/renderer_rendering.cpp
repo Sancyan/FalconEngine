@@ -1957,6 +1957,22 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       renderingInfo.renderArea = vk::Rect2D({0, 0}, swapChainExtent);
       auto savedDepthPtr2 = renderingInfo.pDepthAttachment;
       renderingInfo.pDepthAttachment = nullptr;
+
+      vk::ImageMemoryBarrier2 depthToSample{
+		  .srcStageMask        = vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
+		  .srcAccessMask       = vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+		  .dstStageMask        = vk::PipelineStageFlagBits2::eFragmentShader,
+		  .dstAccessMask       = vk::AccessFlagBits2::eShaderRead,
+		  .oldLayout           = vk::ImageLayout::eDepthAttachmentOptimal,
+		  .newLayout           = vk::ImageLayout::eDepthReadOnlyOptimal,
+		  .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		  .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		  .image               = *depthImage,
+		  .subresourceRange    = {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}};
+	  vk::DependencyInfo depA{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &depthToSample};
+	  commandBuffers[currentFrame].pipelineBarrier2(depA);
+
+      //Composite Pass 1b Begin Render
       commandBuffers[currentFrame].beginRendering(renderingInfo);
 
       if (!!*compositePipeline) {
@@ -1992,6 +2008,21 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
       commandBuffers[currentFrame].draw(3, 1, 0, 0);
       commandBuffers[currentFrame].endRendering();
+      //Composite End rendering
+	  vk::ImageMemoryBarrier2 depthBack{
+		  .srcStageMask        = vk::PipelineStageFlagBits2::eFragmentShader,
+		  .srcAccessMask       = {},
+		  .dstStageMask        = vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
+		  .dstAccessMask       = vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+		  .oldLayout           = vk::ImageLayout::eDepthReadOnlyOptimal,
+		  .newLayout           = vk::ImageLayout::eDepthAttachmentOptimal,
+		  .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		  .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		  .image               = *depthImage,
+		  .subresourceRange    = {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}};
+	  vk::DependencyInfo depB{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &depthBack};
+	  commandBuffers[currentFrame].pipelineBarrier2(depB);
+
       renderingInfo.pDepthAttachment = savedDepthPtr2;
 
       // Transition swapchain back to PRESENT and RQ image back to GENERAL for next frame

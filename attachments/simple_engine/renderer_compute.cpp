@@ -21,7 +21,7 @@
 
 // This file contains compute-related methods from the Renderer class
 
-bool Renderer::createAtmosphereCompute()
+bool Renderer::createAtmospherePipeline()
 {
     try
     {
@@ -293,9 +293,13 @@ bool Renderer::createAtmosphereCommandPool()
 
 void Renderer::dispatchSkyViewLUT(vk::raii::CommandBuffer &cmd, const glm::vec3 &sunDirection, float viewHeight)
 {
-	vk::ImageMemoryBarrier barrier{
-	    .srcAccessMask = vk::AccessFlagBits::eShaderWrite, .dstAccessMask = vk::AccessFlagBits::eShaderRead, .oldLayout = vk::ImageLayout::eGeneral, .newLayout = vk::ImageLayout::eGeneral, .srcQueueFamilyIndex = vk::QueueFamilyIgnored, .dstQueueFamilyIndex = vk::QueueFamilyIgnored, .image = *multiScatterLUTImage, .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
-	cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader, {}, {}, {}, {barrier});
+	vk::MemoryBarrier2 pre{
+	    .srcStageMask  = vk::PipelineStageFlagBits2::eComputeShader | vk::PipelineStageFlagBits2::eFragmentShader,
+	    .srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
+	    .dstStageMask  = vk::PipelineStageFlagBits2::eComputeShader,
+	    .dstAccessMask = vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite};
+	vk::DependencyInfo preDep{.memoryBarrierCount = 1, .pMemoryBarriers = &pre};
+	cmd.pipelineBarrier2(preDep);
 
 	cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *skyViewLUTPipeline);
 	cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *atmoSpherePipelineLayout, 0, {*atmoSphereDescriptorSets[0]}, {});
@@ -306,9 +310,14 @@ void Renderer::dispatchSkyViewLUT(vk::raii::CommandBuffer &cmd, const glm::vec3 
 	} pc{sunDirection, viewHeight};
 	cmd.pushConstants<decltype(pc)>(*atmoSpherePipelineLayout, vk::ShaderStageFlagBits::eCompute, 0, pc);
 	cmd.dispatch(24, 16, 1);        // ceil(192/8), ceil(108/8), NOTE: 108 is bumped up to 128 therefore y is changed to 16 groups of 8 y threads
+
+    vk::MemoryBarrier2 post{
+	    .srcStageMask = vk::PipelineStageFlagBits2::eComputeShader, .srcAccessMask = vk::AccessFlagBits2::eShaderWrite, .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader, .dstAccessMask = vk::AccessFlagBits2::eShaderRead};
+	vk::DependencyInfo postDep{.memoryBarrierCount = 1, .pMemoryBarriers = &post};
+	cmd.pipelineBarrier2(postDep);
 }
 
-void Renderer::generateAtmosphereLUTs(vk::raii::CommandBuffer& cmd, const Renderer::AtmosphereParameters& params)
+void Renderer::dispatchAtmosphereLUTs(vk::raii::CommandBuffer& cmd, const Renderer::AtmosphereParameters& params)
 {
 	std::memcpy(atmosphereParamsMapped, &params, sizeof(AtmosphereParameters));
 
