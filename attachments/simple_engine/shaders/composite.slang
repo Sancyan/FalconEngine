@@ -120,9 +120,10 @@ float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, float gB
         float4 farClip = float4(ndc, 1.0f, 1.0f);
         float4 farWorld = mul(gInvViewProj, farClip);
         farWorld /= farWorld.w;
-        float3 worldDir = normalize(farWorld.xyz - gCameraWorldPos);
+        float3 dirEngine = normalize(farWorld.xyz - gCameraWorldPos);
+        float3 worldDir = float3(dirEngine.x, -dirEngine.z, dirEngine.y); // Y-up -> Z-up 
 
-        //AtmosphereParameters atmosphere = gAtmosphere;
+        
         float2 uv = WorldDirToSkyViewUv(worldDir, normalize(gSunDirection), gViewHeight, gBotttomRadius);
         color = skyViewLUT.Sample(uv).rgb;
     }
