@@ -876,6 +876,31 @@ bool Renderer::createCompositePipeline() {
   }
 }
 
+bool Renderer::createSkyViewParamsBuffers()
+{
+	try
+	{
+		vk::DeviceSize bufferSize = sizeof(SkyViewParamsGPU);
+		skyViewParamsBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+		skyViewParamsBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+		skyViewParamsMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+		{
+			std::tie(skyViewParamsBuffers[i], skyViewParamsBuffersMemory[i]) = createBuffer(
+			    bufferSize, vk::BufferUsageFlagBits::eUniformBuffer,
+			    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+			skyViewParamsMapped[i] = skyViewParamsBuffersMemory[i].mapMemory(0, bufferSize);
+		}
+		return true;
+	}
+	catch (const std::exception &e)
+	{
+		std::cerr << "Failed to create SkyView params buffers: " << e.what() << std::endl;
+		return false;
+	}
+}
+
 // Create Depth Pre-pass pipeline (depth-only)
 bool Renderer::createDepthPrepassPipeline() {
   try {
