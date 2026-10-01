@@ -55,7 +55,7 @@ bool Renderer::createDepthResources() {
       swapChainExtent.height,
       depthFormat,
       vk::ImageTiling::eOptimal,
-      vk::ImageUsageFlagBits::eDepthStencilAttachment,
+      vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled,
       vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     // Create depth image view
@@ -2088,6 +2088,20 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::createBuffer(
 }
 
 void Renderer::createTransparentDescriptorSets() {
+
+    vk::raii::Sampler depthNearestSampler = nullptr;
+
+    if (!*depthNearestSampler)
+	{
+	    depthNearestSampler = vk::raii::Sampler(device, vk::SamplerCreateInfo{
+		.magFilter = vk::Filter::eNearest, .minFilter = vk::Filter::eNearest, 
+        .mipmapMode = vk::SamplerMipmapMode::eNearest, 
+        .addressModeU = vk::SamplerAddressMode::eClampToEdge, 
+        .addressModeV = vk::SamplerAddressMode::eClampToEdge, .addressModeW = vk::SamplerAddressMode::eClampToEdge, 
+        .minLod = 0.0f, .maxLod = 0.0f});
+	}
+
+
   // We need one descriptor set per frame in flight for this resource
   std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *transparentDescriptorSetLayout);
   vk::DescriptorSetAllocateInfo allocInfo{
@@ -2108,16 +2122,20 @@ void Renderer::createTransparentDescriptorSets() {
       .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
     };
 
-    vk::WriteDescriptorSet descriptorWrite{
-      .dstSet = *transparentDescriptorSets[i],
-      .dstBinding = 0, // Binding 0 in Set 1
-      .descriptorCount = 1,
-      .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-      .pImageInfo = &imageInfo
-    }; {
-      std::lock_guard<std::mutex> lk(descriptorMutex);
-      device.updateDescriptorSets(descriptorWrite, nullptr);
-    }
+    vk::DescriptorImageInfo  colorInfo{.sampler = *opaqueSceneColorSampler, .imageView = *opaqueSceneColorImageViews[i], .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+	vk::DescriptorImageInfo  depthInfo{.sampler = *depthNearestSampler, .imageView = *depthImageView, .imageLayout = vk::ImageLayout::eDepthReadOnlyOptimal};
+	vk::DescriptorImageInfo  skyInfo{.sampler = *atmosphereLUTSampler, .imageView = *skyViewLUTView, .imageLayout = vk::ImageLayout::eGeneral};
+	vk::DescriptorBufferInfo paramsInfo{.buffer = *skyViewParamsBuffers[i], .offset = 0, .range = sizeof(SkyViewParamsGPU)};
+
+	std::array<vk::WriteDescriptorSet, 4> writes{
+		vk::WriteDescriptorSet{.dstSet = *transparentDescriptorSets[i], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &colorInfo},
+		vk::WriteDescriptorSet{.dstSet = *transparentDescriptorSets[i], .dstBinding = 1, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &depthInfo},
+		vk::WriteDescriptorSet{.dstSet = *transparentDescriptorSets[i], .dstBinding = 2, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &skyInfo},
+		vk::WriteDescriptorSet{.dstSet = *transparentDescriptorSets[i], .dstBinding = 3, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &paramsInfo}};
+	{
+		std::lock_guard<std::mutex> lk(descriptorMutex);
+		device.updateDescriptorSets(writes, nullptr);
+	}
   }
 }
 
