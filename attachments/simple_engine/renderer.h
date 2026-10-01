@@ -232,6 +232,15 @@ struct MaterialProperties {
   alignas(4) bool hasEmissiveStrengthExtension;
 };
 
+	struct SkyViewParamsGPU
+{
+	glm::mat4 invViewProj;
+	glm::vec3 cameraWorldPos;
+	float     viewHeight;
+	glm::vec3 sunDirection;
+	float     _pad1;
+};
+
 /**
  * @brief Rendering mode selection
  */
@@ -253,14 +262,7 @@ class Renderer {
 	 * @brief Structure for atmopshere properties.
 	 * This structure must match the UBO structure in the atmosphere  shader.
 	 */
-	struct SkyViewParamsGPU
-	{
-		glm::mat4 invViewProj;
-		glm::vec3 cameraWorldPos;
-		float     viewHeight;
-		glm::vec3 sunDirection;
-		float     _pad1;
-	};
+
 	struct AtmosphereParameters
 	{
 		glm::vec3 RayleighScattering;
@@ -1179,7 +1181,9 @@ class Renderer {
     vk::PipelineRenderingCreateInfo compositePipelineRenderingCreateInfo;
 
     // Create composite pipeline
-    bool createCompositePipeline();
+	bool createCompositePipeline();
+
+	bool createSkyViewParamsBuffers();
 
     // Compute pipeline
     vk::raii::PipelineLayout computePipelineLayout = nullptr;
@@ -1937,9 +1941,9 @@ class Renderer {
     void dispatchForwardPlus(vk::raii::CommandBuffer& cmd, uint32_t tilesX, uint32_t tilesY, uint32_t slicesZ);
     // Ensure Forward+ compute descriptor set binding 0 (lights SSBO) is bound for a frame
     void refreshForwardPlusComputeLightsBindingForFrame(uint32_t frameIndex);
-	bool createAtmosphereCompute();
+	bool createAtmospherePipeline();
 	bool createAtmosphereResources();
-	void generateAtmosphereLUTs(vk::raii::CommandBuffer &cmd, const Renderer::AtmosphereParameters &params);
+	void dispatchAtmosphereLUTs(vk::raii::CommandBuffer &cmd, const Renderer::AtmosphereParameters &params);
 	bool createComputePipeline();
     void pushMaterialProperties(vk::CommandBuffer commandBuffer, const MaterialProperties& material) const;
     bool createCommandPool();
