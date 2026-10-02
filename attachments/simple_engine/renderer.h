@@ -1227,6 +1227,8 @@ class Renderer {
 	std::vector<vk::raii::DeviceMemory> skyViewParamsBuffersMemory;
 	std::vector<void *>                 skyViewParamsMapped;
 
+    vk::raii::Sampler depthNearestSampler = nullptr;
+
 
 
     //Atmosphere Params

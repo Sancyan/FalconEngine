@@ -2089,7 +2089,7 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::createBuffer(
 
 void Renderer::createTransparentDescriptorSets() {
 
-    vk::raii::Sampler depthNearestSampler = nullptr;
+    
 
     if (!*depthNearestSampler)
 	{
@@ -2139,37 +2139,39 @@ void Renderer::createTransparentDescriptorSets() {
   }
 }
 
-void Renderer::createTransparentFallbackDescriptorSets() {
-  // Allocate one descriptor set per frame in flight using the same layout (single combined image sampler at binding 0)
-  std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *transparentDescriptorSetLayout);
-  vk::DescriptorSetAllocateInfo allocInfo{
-    .descriptorPool = *descriptorPool,
-    .descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT),
-    .pSetLayouts = layouts.data()
-  }; {
-    std::lock_guard<std::mutex> lk(descriptorMutex);
-    transparentFallbackDescriptorSets = vk::raii::DescriptorSets(device, allocInfo);
-  }
+void Renderer::createTransparentFallbackDescriptorSets()
+{
+	// Same layout as the real sets: 0 = color, 1 = depth, 2 = sky view LUT, 3 = SkyViewParams UBO
+	std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *transparentDescriptorSetLayout);
+	vk::DescriptorSetAllocateInfo        allocInfo{
+	           .descriptorPool     = *descriptorPool,
+	           .descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT),
+	           .pSetLayouts        = layouts.data()};
+	{
+		std::lock_guard<std::mutex> lk(descriptorMutex);
+		transparentFallbackDescriptorSets = vk::raii::DescriptorSets(device, allocInfo);
+	}
 
-  // Point each set to the default texture, which is guaranteed to be in SHADER_READ_ONLY_OPTIMAL when used in the opaque pass
-  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    vk::DescriptorImageInfo imageInfo{
-      .sampler = *defaultTextureResources.textureSampler,
-      .imageView = *defaultTextureResources.textureImageView,
-      .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
-    };
+	// Bindings 0-2: the default texture, which is guaranteed to be SHADER_READ_ONLY_OPTIMAL.
+	// Binding 3: the real per-frame params buffer.
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	{
+		vk::DescriptorImageInfo imageInfo{
+		    .sampler     = *defaultTextureResources.textureSampler,
+		    .imageView   = *defaultTextureResources.textureImageView,
+		    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+		vk::DescriptorBufferInfo paramsInfo{.buffer = *skyViewParamsBuffers[i], .offset = 0, .range = sizeof(SkyViewParamsGPU)};
 
-    vk::WriteDescriptorSet descriptorWrite{
-      .dstSet = *transparentFallbackDescriptorSets[i],
-      .dstBinding = 0,
-      .descriptorCount = 1,
-      .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-      .pImageInfo = &imageInfo
-    }; {
-      std::lock_guard<std::mutex> lk(descriptorMutex);
-      device.updateDescriptorSets(descriptorWrite, nullptr);
-    }
-  }
+		std::array<vk::WriteDescriptorSet, 4> writes{
+		    vk::WriteDescriptorSet{.dstSet = *transparentFallbackDescriptorSets[i], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imageInfo},
+		    vk::WriteDescriptorSet{.dstSet = *transparentFallbackDescriptorSets[i], .dstBinding = 1, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imageInfo},
+		    vk::WriteDescriptorSet{.dstSet = *transparentFallbackDescriptorSets[i], .dstBinding = 2, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imageInfo},
+		    vk::WriteDescriptorSet{.dstSet = *transparentFallbackDescriptorSets[i], .dstBinding = 3, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &paramsInfo}};
+		{
+			std::lock_guard<std::mutex> lk(descriptorMutex);
+			device.updateDescriptorSets(writes, nullptr);
+		}
+	}
 }
 
 bool Renderer::createOpaqueSceneColorResources() {
