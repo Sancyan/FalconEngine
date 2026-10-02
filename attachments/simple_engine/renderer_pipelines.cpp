@@ -880,17 +880,22 @@ bool Renderer::createSkyViewParamsBuffers()
 {
 	try
 	{
-		vk::DeviceSize bufferSize = sizeof(SkyViewParamsGPU);
-		skyViewParamsBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-		skyViewParamsBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-		skyViewParamsMapped.resize(MAX_FRAMES_IN_FLIGHT);
+		const vk::DeviceSize bufferSize = sizeof(SkyViewParamsGPU);
+		skyViewParamsBuffers.clear();
+		skyViewParamsBuffersMemory.clear();
+		skyViewParamsMapped.clear();
+		skyViewParamsBuffers.reserve(MAX_FRAMES_IN_FLIGHT);
+		skyViewParamsBuffersMemory.reserve(MAX_FRAMES_IN_FLIGHT);
+		skyViewParamsMapped.reserve(MAX_FRAMES_IN_FLIGHT);
 
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
-			std::tie(skyViewParamsBuffers[i], skyViewParamsBuffersMemory[i]) = createBuffer(
+			auto [buffer, memory] = createBuffer(
 			    bufferSize, vk::BufferUsageFlagBits::eUniformBuffer,
 			    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-			skyViewParamsMapped[i] = skyViewParamsBuffersMemory[i].mapMemory(0, bufferSize);
+			skyViewParamsBuffers.push_back(std::move(buffer));
+			skyViewParamsBuffersMemory.push_back(std::move(memory));
+			skyViewParamsMapped.push_back(skyViewParamsBuffersMemory.back().mapMemory(0, bufferSize));
 		}
 		return true;
 	}
@@ -1428,23 +1433,18 @@ bool Renderer::createRayQueryResources() {
       }
 
       // Update each set to sample the rayQueryOutputImage
-      for (size_t i = 0; i < rqCompositeDescriptorSets.size(); ++i) {
+      for (size_t i = 0; i < rqCompositeDescriptorSets.size(); ++i) 
+      {
         // Use a dedicated sampler to avoid null sampler issues during early init
         vk::Sampler samplerHandle = *rqCompositeSampler;
-        vk::DescriptorImageInfo imgInfo{
-          .sampler = samplerHandle,
-          .imageView = *rayQueryOutputImageView,
-          .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
-        };
-        vk::WriteDescriptorSet write{
-          .dstSet = *rqCompositeDescriptorSets[i],
-          .dstBinding = 0,
-          .dstArrayElement = 0,
-          .descriptorCount = 1,
-          .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-          .pImageInfo = &imgInfo
-        };
-        device.updateDescriptorSets({write}, {});
+		vk::DescriptorImageInfo               imgInfo{.sampler = *rqCompositeSampler, .imageView = *rayQueryOutputImageView, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+		vk::DescriptorBufferInfo              paramsInfo{.buffer = *skyViewParamsBuffers[i], .offset = 0, .range = sizeof(SkyViewParamsGPU)};
+		std::array<vk::WriteDescriptorSet, 4> writes{
+			vk::WriteDescriptorSet{.dstSet = *rqCompositeDescriptorSets[i], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imgInfo},
+			vk::WriteDescriptorSet{.dstSet = *rqCompositeDescriptorSets[i], .dstBinding = 1, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imgInfo},
+			vk::WriteDescriptorSet{.dstSet = *rqCompositeDescriptorSets[i], .dstBinding = 2, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imgInfo},
+			vk::WriteDescriptorSet{.dstSet = *rqCompositeDescriptorSets[i], .dstBinding = 3, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &paramsInfo}};
+		device.updateDescriptorSets(writes, {});
       }
     }
 

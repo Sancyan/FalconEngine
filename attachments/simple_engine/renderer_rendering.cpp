@@ -1958,21 +1958,9 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       auto savedDepthPtr2 = renderingInfo.pDepthAttachment;
       renderingInfo.pDepthAttachment = nullptr;
 
-      vk::ImageMemoryBarrier2 depthToSample{
-		  .srcStageMask        = vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
-		  .srcAccessMask       = vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-		  .dstStageMask        = vk::PipelineStageFlagBits2::eFragmentShader,
-		  .dstAccessMask       = vk::AccessFlagBits2::eShaderRead,
-		  .oldLayout           = vk::ImageLayout::eDepthAttachmentOptimal,
-		  .newLayout           = vk::ImageLayout::eDepthReadOnlyOptimal,
-		  .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		  .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		  .image               = *depthImage,
-		  .subresourceRange    = {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}};
-	  vk::DependencyInfo depA{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &depthToSample};
-	  commandBuffers[currentFrame].pipelineBarrier2(depA);
 
-      //Composite Pass 1b Begin Render
+
+      //Composite Pass RayQuery mode with No depth Begin Render
       commandBuffers[currentFrame].beginRendering(renderingInfo);
 
       if (!!*compositePipeline) {
@@ -2008,20 +1996,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
       commandBuffers[currentFrame].draw(3, 1, 0, 0);
       commandBuffers[currentFrame].endRendering();
-      //Composite End rendering
-	  vk::ImageMemoryBarrier2 depthBack{
-		  .srcStageMask        = vk::PipelineStageFlagBits2::eFragmentShader,
-		  .srcAccessMask       = {},
-		  .dstStageMask        = vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
-		  .dstAccessMask       = vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-		  .oldLayout           = vk::ImageLayout::eDepthReadOnlyOptimal,
-		  .newLayout           = vk::ImageLayout::eDepthAttachmentOptimal,
-		  .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		  .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		  .image               = *depthImage,
-		  .subresourceRange    = {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}};
-	  vk::DependencyInfo depB{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &depthBack};
-	  commandBuffers[currentFrame].pipelineBarrier2(depB);
+      //Composite RayQuery End rendering
+
 
       renderingInfo.pDepthAttachment = savedDepthPtr2;
 
@@ -2536,6 +2512,22 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       // IMPORTANT: Composite pass does not use a depth attachment. Avoid binding it to satisfy dynamic rendering VUIDs.
       auto savedDepthPtr = renderingInfo.pDepthAttachment; // save to restore later
       renderingInfo.pDepthAttachment = nullptr;
+
+            vk::ImageMemoryBarrier2 depthToSample{
+		  .srcStageMask        = vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
+		  .srcAccessMask       = vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+		  .dstStageMask        = vk::PipelineStageFlagBits2::eFragmentShader,
+		  .dstAccessMask       = vk::AccessFlagBits2::eShaderRead,
+		  .oldLayout           = vk::ImageLayout::eDepthAttachmentOptimal,
+		  .newLayout           = vk::ImageLayout::eDepthReadOnlyOptimal,
+		  .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		  .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		  .image               = *depthImage,
+		  .subresourceRange    = {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}};
+	  vk::DependencyInfo depA{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &depthToSample};
+	  commandBuffers[currentFrame].pipelineBarrier2(depA);
+
+      //Begin Composite Raster render
       commandBuffers[currentFrame].beginRendering(renderingInfo);
 
       // Bind composite pipeline
@@ -2571,10 +2563,35 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 	  pc.bottomRadius = atmoManager.getAtmoParams().BottomRadius;
       commandBuffers[currentFrame].pushConstants<CompositePush>(*compositePipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pc);
 
+
+      //Fill skyviewParams Buffer
+	  glm::mat4 proj = camera->GetProjectionMatrix();
+	  proj[1][1] *= -1.0f;        // same Vulkan Y-flip the main pass uses
+	  SkyViewParamsGPU sv{};
+	  sv.invViewProj    = glm::inverse(proj * camera->GetViewMatrix());
+	  sv.cameraWorldPos = camera->GetPosition();        // ENGINE world space, not planet-space
+	  sv.viewHeight     = viewHeight;
+	  sv.sunDirection   = glm::normalize(sundirection);
+	  std::memcpy(skyViewParamsMapped[currentFrame], &sv, sizeof(sv));
+
       // Draw fullscreen triangle
       commandBuffers[currentFrame].draw(3, 1, 0, 0);
 
       commandBuffers[currentFrame].endRendering();
+
+      	  vk::ImageMemoryBarrier2 depthBack{
+		  .srcStageMask        = vk::PipelineStageFlagBits2::eFragmentShader,
+		  .srcAccessMask       = {},
+		  .dstStageMask        = vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
+		  .dstAccessMask       = vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+		  .oldLayout           = vk::ImageLayout::eDepthReadOnlyOptimal,
+		  .newLayout           = vk::ImageLayout::eDepthAttachmentOptimal,
+		  .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		  .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		  .image               = *depthImage,
+		  .subresourceRange    = {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}};
+	  vk::DependencyInfo depB{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &depthBack};
+	  commandBuffers[currentFrame].pipelineBarrier2(depB);
       // Restore depth attachment pointer for subsequent passes
       renderingInfo.pDepthAttachment = savedDepthPtr;
     }
