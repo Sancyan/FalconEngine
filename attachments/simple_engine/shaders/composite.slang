@@ -20,7 +20,7 @@
 import tonemapping_utils;
 //import AtmosphereCore;
 
-// TODO: PASS camera and sun direction to shader
+
 public static const float PI = 3.14159265358979323846f;
 
 struct VSOut {
@@ -60,7 +60,7 @@ struct Push {
     float exposure;
     float gamma;
     int outputIsSRGB;     // 1 when the color attachment is SRGB; 0 otherwise
-    float BotttomRadius;         // pad to 16 bytes for push constant layout
+    float BotttomRadius;         // pad to 16 bytes for push constant layout, use bottom radius float instead of padding
 };
 [[vk::push_constant]] Push pushConsts;
 
@@ -124,7 +124,7 @@ float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, float gB
         float3 worldDir = float3(dirEngine.x, -dirEngine.z, dirEngine.y); // Y-up -> Z-up 
 
         
-        float2 uv = WorldDirToSkyViewUv(worldDir, normalize(gSunDirection), gViewHeight, gBotttomRadius);
+        float2 uv = WorldDirToSkyViewUv(worldDir, normalize(gSunDirection), gViewHeight, pushConsts.BotttomRadius);
         color = skyViewLUT.Sample(uv).rgb;
     }
     else
