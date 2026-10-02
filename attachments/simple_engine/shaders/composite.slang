@@ -53,14 +53,14 @@ cbuffer SkyViewParams
     float3 gCameraWorldPos; // kilometers, planet-space
     float gViewHeight;
     float3 gSunDirection;
-    float gBotttomRadius;
+    float _pad;
 };
 
 struct Push {
     float exposure;
     float gamma;
-    int   outputIsSRGB; // 1 when the color attachment is SRGB; 0 otherwise
-    float _pad;         // pad to 16 bytes for push constant layout
+    int outputIsSRGB;     // 1 when the color attachment is SRGB; 0 otherwise
+    float BotttomRadius;         // pad to 16 bytes for push constant layout
 };
 [[vk::push_constant]] Push pushConsts;
 
@@ -110,7 +110,7 @@ float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, float gB
     float3 color;
     // NOTE: adjust this comparison to match the depth convention 
     // (non-reversed) Z clears to 1.0 at the far plane; reversed-Z clears to 0.0.
-    bool isBackground = depth >= 0.9999f;
+    bool isBackground = pushConsts.BotttomRadius > 0.0f && depth >= 0.9999f;
 
     if (isBackground)
     {
