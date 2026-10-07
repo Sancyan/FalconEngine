@@ -104,7 +104,6 @@ float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, float gB
     float depth = sceneDepth.Sample(i.UV).r;
 
     float4 c = sceneColor.Sample(i.UV);
-    //float3 color = c.rgb;
 
 
     float3 color;
@@ -126,6 +125,16 @@ float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, float gB
         
         float2 uv = WorldDirToSkyViewUv(worldDir, normalize(gSunDirection), gViewHeight, pushConsts.BotttomRadius);
         color = skyViewLUT.Sample(uv).rgb;
+
+        //Compute Sun Disk 
+        float angularRadius = radians(0.266f);
+
+        float cosAngle = dot(dirEngine, normalize(gSunDirection));
+        float diskMask = step(cos(angularRadius), cosAngle);
+
+        if (diskMask == 1) {
+            color = float3(0, 0, 0);
+        }
     }
     else
     {
