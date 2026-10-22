@@ -1011,6 +1011,31 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax, inout 
     return result;
 }
 
+float3 evaluateLambert(float3 reflectance)
+{
+    //Lambert = rho/pi
+    return reflectance / PI;
+}
+
+float3 shadeDiffuse(HitInfo hit) {
+    float3 normal = normalize(hit.normal);
+
+    // Direction from hit surface toward light
+    float3 wi = normalize(float3(0.6, 0.8, 0.0));
+
+    float3 reflectance = hit.baseColor * float3(1.0, 0.5, 1.0); // Material's RGB diffuse reflectance
+
+    // Irradiance on a surface facing the incoming light source
+    float3 perpendicularIrradiance = float3(1.0, 1.0, 1.0);
+
+    float3 f = evaluateLambert(reflectance);
+
+    //cosine theta is equivalent to the dot of the wi and the normal 
+    float cosine = max(dot(normal, wi), 0);
+
+    return f * perpendicularIrradiance * cosine;
+}
+
 // Compute shader entry point
 [[shader("compute")]]
 [numthreads(8, 8, 1)]
@@ -1056,7 +1081,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     HitInfo hit = traceRay(rayOrigin, rayDir, 0.0001, 10000.0, rngState);
     
     if (hit.hit) {
-        float3 c = shadeWithSecondaryRays(rayOrigin, rayDir, hit, rngState);
+        float3 c = shadeDiffuse(hit);
         // Output linear HDR-ish color; composite pass will apply exposure/gamma.
         outputImage[pixelCoord] = float4(c, 1.0);
 
