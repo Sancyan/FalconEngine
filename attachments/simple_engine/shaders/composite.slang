@@ -127,7 +127,7 @@ float2 WorldDirToSkyViewUv(float3 dir, float3 sunDir, float viewHeight, float gB
         color = skyViewLUT.Sample(uv).rgb;
 
         //Compute Sun Disk 
-        float angularRadius = radians(0.266f);
+        float angularRadius = radians(0.5f);
 
         float cosAngle = dot(dirEngine, normalize(gSunDirection));
         float diskMask = step(cos(angularRadius), cosAngle);
