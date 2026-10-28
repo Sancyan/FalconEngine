@@ -723,7 +723,7 @@ vk::Format Renderer::determineTextureFormat(const std::string& textureId) {
   if (idLower.find("basecolor") != std::string::npos ||
     idLower.find("base_color") != std::string::npos ||
     idLower.find("albedo") != std::string::npos ||
-    idLower.find("diffuse") != std::string::npos ||
+	  idLower.find("diffuse") != std::string::npos ||
     idLower.find("specgloss") != std::string::npos ||
     idLower.find("specularglossiness") != std::string::npos ||
     textureId == Renderer::SHARED_DEFAULT_ALBEDO_ID) {

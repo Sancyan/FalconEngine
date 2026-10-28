@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 #include "imgui_system.h"
+#include "frame_graph_debug_vulkan.h"
 #include "audio_system.h"
 #include "renderer.h"
 
@@ -1104,4 +1105,35 @@ void ImGuiSystem::updateBuffers(uint32_t frameIndex) {
   } catch (const std::exception& e) {
     std::cerr << "Failed to update buffers: " << e.what() << std::endl;
   }
+}
+void ImGuiSystem::DescribeFrameGraphPass(frame_debug::Capture& capture, uint32_t frameIndex) const {
+    if (!initialized || !capture.Active()) return;
+    auto* drawData = ImGui::GetDrawData();
+    if (!drawData || drawData->CmdListsCount == 0) return;
+    capture.Pipeline("ImGui", FrameGraphDebugHandle(*pipeline));
+    capture.Descriptor(0, "ImGui font atlas", FrameGraphDebugHandle(*descriptorSet));
+    frame_debug::Resource font;
+    font.name = "ImGui font atlas"; font.format = "R8G8B8A8Unorm";
+    font.scope = frame_debug::Scope::Shared; font.instances = 1;
+    font.handle = FrameGraphDebugHandle(*fontImage);
+    capture.AddResource(std::move(font));
+    capture.UseResource("ImGui font atlas", frame_debug::Access::Read, "Sampled font", "ShaderReadOnlyOptimal", "set 0 binding 0");
+    if (frameIndex < vertexBuffers.size()) {
+        frame_debug::Resource vertices;
+        vertices.name = "ImGui vertices"; vertices.kind = "Buffer"; vertices.scope = frame_debug::Scope::FrameSlot;
+        vertices.instances = static_cast<uint32_t>(vertexBuffers.size()); vertices.selectedInstance = frameIndex;
+        vertices.handle = FrameGraphDebugHandle(*vertexBuffers[frameIndex]);
+        capture.AddResource(std::move(vertices));
+        capture.UseResource("ImGui vertices", frame_debug::Access::Read, "Vertex input");
+    }
+    if (frameIndex < indexBuffers.size()) {
+        frame_debug::Resource indices;
+        indices.name = "ImGui indices"; indices.kind = "Buffer"; indices.scope = frame_debug::Scope::FrameSlot;
+        indices.instances = static_cast<uint32_t>(indexBuffers.size()); indices.selectedInstance = frameIndex;
+        indices.handle = FrameGraphDebugHandle(*indexBuffers[frameIndex]);
+        capture.AddResource(std::move(indices));
+        capture.UseResource("ImGui indices", frame_debug::Access::Read, "Index input");
+    }
+    for (int i = 0; i < drawData->CmdListsCount; ++i)
+        capture.Draw(static_cast<uint32_t>(drawData->CmdLists[i]->CmdBuffer.Size));
 }

@@ -25,6 +25,7 @@
 
 // Forward declarations
 class Renderer;
+namespace frame_debug { class Capture; }
 class AudioSystem;
 class AudioSource;
 struct ImGuiContext;
@@ -69,6 +70,7 @@ class ImGuiSystem {
 	 * @param commandBuffer The command buffer to record rendering commands to.
 	 */
     void Render(vk::raii::CommandBuffer& commandBuffer, uint32_t frameIndex);
+    void DescribeFrameGraphPass(frame_debug::Capture& capture, uint32_t frameIndex) const;
 
     /**
 	 * @brief Handle mouse input.

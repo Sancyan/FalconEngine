@@ -1350,6 +1350,7 @@ bool Renderer::createRayQueryResources() {
     );
 
     rayQueryOutputImage = std::move(image);
+    rayQueryOutputFormat = rqFormat;
     rayQueryOutputImageAllocation = std::move(allocation);
 
     // Create image view
@@ -1364,6 +1365,15 @@ bool Renderer::createRayQueryResources() {
     viewInfo.subresourceRange.layerCount = 1;
 
     rayQueryOutputImageView = vk::raii::ImageView(device, viewInfo);
+
+    if (*debugMessenger)
+	{
+		device.setDebugUtilsObjectNameEXT(*rayQueryOutputImage,
+			                              "RayQuery.Output.LinearHDR.Image");
+
+        device.setDebugUtilsObjectNameEXT(*rayQueryOutputImageView,
+			                              "RayQuery.Output.LinearHDR.View");
+    }
 
     // Transition output image to GENERAL layout for compute shader writes
     transitionImageLayout(*rayQueryOutputImage,
@@ -1388,6 +1398,20 @@ bool Renderer::createRayQueryResources() {
       for (auto& s : sets) {
         rayQueryDescriptorSets.emplace_back(std::move(s));
       }
+    }
+
+    if (*debugMessenger)
+	{
+		for (size_t frame = 0; frame < rayQueryDescriptorSets.size(); ++frame)
+		{
+			const std::string name =
+				"RayQuery.Resources.FrameSlot[" +
+				std::to_string(frame) + "]";
+
+			device.setDebugUtilsObjectNameEXT(
+				*rayQueryDescriptorSets[frame],
+				name);
+        }
     }
 
     // Create descriptor sets for composite pass to sample the rayQueryOutputImage

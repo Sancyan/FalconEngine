@@ -19,6 +19,7 @@
 #include "mesh_component.h"
 #include "model_loader.h"
 #include "renderer.h"
+#include "frame_graph_debug_vulkan.h"
 #include "transform_component.h"
 #include <algorithm>
 #include <array>
@@ -1775,6 +1776,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   commandBuffers[currentFrame].reset();
   // Begin command buffer recording for this frame
   commandBuffers[currentFrame].begin(vk::CommandBufferBeginInfo());
+  beginFrameGraphDebug(imageIndex);
   isRecordingCmd.store(true, std::memory_order_relaxed);
   if (framebufferResized.load(std::memory_order_relaxed)) {
     commandBuffers[currentFrame].end();
@@ -1804,6 +1806,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       // During loading, allow the raster path (and the progress overlay) to render normally
       // instead of presenting a diagnostic magenta frame.
       if (!IsLoading()) {
+        frameGraphDebugCapture.BeginPass("Ray query diagnostic clear", frame_debug::PassKind::Transfer, "TLAS unavailable; diagnostic frame");
+        frameGraphDebugCapture.UseResource("Swapchain color", frame_debug::Access::Write, "Clear image", "TransferDstOptimal");
         // Present a diagnostic frame from the ray-query path to avoid accidentally showing
         // rasterized content in RayQuery mode.
         // Transition swapchain image from PRESENT to TRANSFER_DST
@@ -1847,6 +1851,16 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     } else {
       // TLAS is valid and descriptor sets were already updated at safe point
       // Proceed with ray query rendering
+      frameGraphDebugCapture.BeginPass("Ray query trace", frame_debug::PassKind::Compute);
+      frameGraphDebugCapture.Pipeline("ray_query.slang", FrameGraphDebugHandle(*rayQueryPipeline));
+      frameGraphDebugCapture.Descriptor(0, "Ray query current frame", FrameGraphDebugHandle(*rayQueryDescriptorSets[currentFrame]));
+      frameGraphDebugCapture.UseResource("Ray query parameters", frame_debug::Access::Read, "Uniform buffer", "", "set 0 binding 0");
+      frameGraphDebugCapture.UseResource("Scene TLAS", frame_debug::Access::Read, "Ray query traversal", "", "set 0 binding 1");
+      frameGraphDebugCapture.UseResource("Ray query output", frame_debug::Access::Write, "Storage image", "General", "set 0 binding 2");
+      frameGraphDebugCapture.UseResource("Lights", frame_debug::Access::Read, "Storage buffer", "", "set 0 binding 3");
+      frameGraphDebugCapture.UseResource("Geometry table", frame_debug::Access::Read, "Storage buffer", "", "set 0 binding 4");
+      frameGraphDebugCapture.UseResource("Material table", frame_debug::Access::Read, "Storage buffer", "", "set 0 binding 5");
+      frameGraphDebugCapture.UseResource("Material textures", frame_debug::Access::Read, "Sampled texture array", "ShaderReadOnlyOptimal", "set 0 binding 6");
       // Bind ray query compute pipeline
       commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eCompute, *rayQueryPipeline);
 
@@ -1912,6 +1926,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       uint32_t workgroupsX = (swapChainExtent.width + 7) / 8;
       uint32_t workgroupsY = (swapChainExtent.height + 7) / 8;
       commandBuffers[currentFrame].dispatch(workgroupsX, workgroupsY, 1);
+      frameGraphDebugCapture.Dispatch();
 
       // Barrier: wait for compute shader to finish writing to output image,
       // then make it readable by fragment shader for sampling in composite pass
@@ -1931,7 +1946,13 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       depRQToSample.imageMemoryBarrierCount = 1;
       depRQToSample.pImageMemoryBarriers = &rqToSample;
       commandBuffers[currentFrame].pipelineBarrier2(depRQToSample);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Ray query output", rqToSample);
 
+      frameGraphDebugCapture.BeginPass("Ray query composite", frame_debug::PassKind::Graphics);
+      frameGraphDebugCapture.Pipeline("composite.slang", FrameGraphDebugHandle(*compositePipeline));
+      if (!rqCompositeDescriptorSets.empty()) frameGraphDebugCapture.Descriptor(0, "Ray query composite current frame", FrameGraphDebugHandle(*rqCompositeDescriptorSets[currentFrame]));
+      frameGraphDebugCapture.UseResource("Ray query output", frame_debug::Access::Read, "Sampled image", "ShaderReadOnlyOptimal", "set 0 binding 0");
+      frameGraphDebugCapture.UseResource("Swapchain color", frame_debug::Access::Write, "Color attachment (clear/store)", "ColorAttachmentOptimal");
       // Composite fullscreen: sample rayQueryOutputImage to the swapchain using the composite pipeline
       // Transition swapchain image to COLOR_ATTACHMENT_OPTIMAL
       vk::ImageMemoryBarrier2 swapchainToColor{};
@@ -1947,6 +1968,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       swapchainToColor.subresourceRange.layerCount = 1;
       vk::DependencyInfo depSwapToColor{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &swapchainToColor};
       commandBuffers[currentFrame].pipelineBarrier2(depSwapToColor);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Swapchain color", swapchainToColor);
       if (imageIndex < swapChainImageLayouts.size())
         swapChainImageLayouts[imageIndex] = swapchainToColor.newLayout;
 
@@ -1995,6 +2017,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       commandBuffers[currentFrame].pushConstants<CompositePush>(*compositePipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pc2);
 
       commandBuffers[currentFrame].draw(3, 1, 0, 0);
+      frameGraphDebugCapture.Draw();
       commandBuffers[currentFrame].endRendering();
       //Composite RayQuery End rendering
 
@@ -2029,6 +2052,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       std::array<vk::ImageMemoryBarrier2, 2> barriers{swapchainToPresent, rqBackToGeneral};
       vk::DependencyInfo depEnd{.imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size()), .pImageMemoryBarriers = barriers.data()};
       commandBuffers[currentFrame].pipelineBarrier2(depEnd);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Swapchain color", swapchainToPresent);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Ray query output", rqBackToGeneral);
       if (imageIndex < swapChainImageLayouts.size())
         swapChainImageLayouts[imageIndex] = swapchainToPresent.newLayout;
 
@@ -2076,6 +2101,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       bool prevFwdPlus = useForwardPlus;
 
       // === RENDERING MODE SELECTION (TOP) ===
+      ImGui::Checkbox("Frame graph debug viewer", &frameGraphDebugViewer.open);
       ImGui::Text("Rendering Mode:");
       if (rayQueryEnabled && accelerationStructureEnabled) {
         const char* modeNames[] = {"Rasterization", "Ray Query"};
@@ -2237,6 +2263,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       ImGui::SliderFloat("Gamma", &gamma, 1.6f, 2.6f, "%.2f");
     }
     ImGui::End();
+    drawFrameGraphDebugViewer();
   }
 
   // Rasterization rendering: only execute if ray query did not render this frame.
@@ -2271,6 +2298,9 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     // Optional Forward+ depth pre-pass for opaque geometry
     if (useForwardPlus) {
       if (!opaqueJobs.empty()) {
+        frameGraphDebugCapture.BeginPass("Opaque depth prepass", frame_debug::PassKind::Graphics);
+        frameGraphDebugCapture.Pipeline("Depth prepass", FrameGraphDebugHandle(*depthPrepassPipeline));
+        frameGraphDebugCapture.UseResource("Scene depth", frame_debug::Access::Write, "Depth attachment (clear/store)", "DepthAttachmentOptimal");
         // Transition depth image for attachment write (Sync2)
         vk::ImageMemoryBarrier2 depthBarrier2{
           .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
@@ -2286,6 +2316,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         };
         vk::DependencyInfo depInfoDepth{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &depthBarrier2};
         commandBuffers[currentFrame].pipelineBarrier2(depInfoDepth);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Scene depth", depthBarrier2);
 
         // Depth-only rendering
         vk::RenderingAttachmentInfo depthOnlyAttachment{.imageView = *depthImageView, .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal, .loadOp = vk::AttachmentLoadOp::eClear, .storeOp = vk::AttachmentStoreOp::eStore, .clearValue = vk::ClearDepthStencilValue{1.0f, 0}};
@@ -2310,6 +2341,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           commandBuffers[currentFrame].bindVertexBuffers(0, buffers, offsets);
           commandBuffers[currentFrame].bindIndexBuffer(*job.meshRes->indexBuffer, 0, vk::IndexType::eUint32);
 
+          frameGraphDebugCapture.Descriptor(0, "Entity PBR current frame", FrameGraphDebugHandle(*job.entityRes->pbrDescriptorSets[currentFrame]));
           // Bind descriptor set (PBR set 0)
           commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                                                            *pbrPipelineLayout,
@@ -2320,6 +2352,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           // Issue draw
           uint32_t instanceCount = std::max(1u, static_cast<uint32_t>(job.meshComp->GetInstanceCount()));
           commandBuffers[currentFrame].drawIndexed(job.meshRes->indexCount, instanceCount, 0, 0, 0);
+          frameGraphDebugCapture.Draw();
         }
 
         commandBuffers[currentFrame].endRendering();
@@ -2339,6 +2372,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         };
         vk::DependencyInfo depInfoDepthToRead{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &depthToRead2};
         commandBuffers[currentFrame].pipelineBarrier2(depInfoDepthToRead);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Scene depth", depthToRead2);
 
         didOpaqueDepthPrepass = true;
       }
@@ -2360,6 +2394,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       dispatchForwardPlus(commandBuffers[currentFrame], tilesX, tilesY, forwardPlusSlicesZ);
     }
 
+    frameGraphDebugCapture.BeginPass("Opaque scene", frame_debug::PassKind::Graphics);
+    frameGraphDebugCapture.UseResource("Opaque scene color", frame_debug::Access::Write, "Color attachment (clear/store)", "ColorAttachmentOptimal");
+    frameGraphDebugCapture.UseResource("Scene depth", didOpaqueDepthPrepass ? frame_debug::Access::ReadWrite : frame_debug::Access::Write,
+        didOpaqueDepthPrepass ? "Depth attachment (load/store)" : "Depth attachment (clear/store)", "DepthAttachmentOptimal");
     // PASS 1: RENDER OPAQUE OBJECTS TO OFF-SCREEN TEXTURE
     // Transition off-screen color to attachment write (Sync2). On first use after creation or after switching
     // from a mode that never produced this image, the layout may still be UNDEFINED.
@@ -2394,6 +2432,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     };
     vk::DependencyInfo depOscToColor{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &oscToColor2};
     commandBuffers[currentFrame].pipelineBarrier2(depOscToColor);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Opaque scene color", oscToColor2);
     if (currentFrame < opaqueSceneColorImageLayouts.size()) {
       opaqueSceneColorImageLayouts[currentFrame] = vk::ImageLayout::eColorAttachmentOptimal;
     }
@@ -2425,6 +2464,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           }
           selectedLayout = &pbrPipelineLayout;
         }
+        frameGraphDebugCapture.Pipeline(useBasic ? "Basic lighting" : (job.isAlphaMasked ? "PBR masked" : (didOpaqueDepthPrepass ? "PBR after prepass" : "PBR")), FrameGraphDebugHandle(**selectedPipeline));
         if (currentPipeline != selectedPipeline) {
           commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, **selectedPipeline);
           currentPipeline = selectedPipeline;
@@ -2441,6 +2481,16 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           continue;
         }
 
+        frameGraphDebugCapture.Descriptor(0, useBasic ? "Entity basic current frame" : "Entity PBR current frame", FrameGraphDebugHandle(*(*descSetsPtr)[currentFrame]));
+        frameGraphDebugCapture.UseResource("Material textures", frame_debug::Access::Read, "Sampled material maps", "ShaderReadOnlyOptimal", useBasic ? "set 0" : "set 0 bindings 1-5");
+        if (!useBasic) {
+          frameGraphDebugCapture.UseResource("Lights", frame_debug::Access::Read, "Storage buffer", "", "set 0 binding 6");
+          if (useForwardPlus) {
+            frameGraphDebugCapture.UseResource("Light tile headers", frame_debug::Access::Read, "Storage buffer", "", "set 0 binding 7");
+            frameGraphDebugCapture.UseResource("Light tile indices", frame_debug::Access::Read, "Storage buffer", "", "set 0 binding 8");
+          }
+          if (enableRasterRayQueryShadows && *tlasStructure.handle) frameGraphDebugCapture.UseResource("Scene TLAS", frame_debug::Access::Read, "Ray query shadows", "", "set 0 binding 11");
+        }
         if (useBasic) {
           commandBuffers[currentFrame].bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics,
@@ -2458,15 +2508,20 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
             0,
             {*(*descSetsPtr)[currentFrame], set1Opaque},
             {});
+          frameGraphDebugCapture.Descriptor(1, "Opaque scene / fallback", FrameGraphDebugHandle(set1Opaque));
 
           commandBuffers[currentFrame].pushConstants<MaterialProperties>(**selectedLayout, vk::ShaderStageFlagBits::eFragment, 0, {job.entityRes->cachedMaterialProps});
         }
         uint32_t instanceCount = std::max(1u, static_cast<uint32_t>(job.meshComp->GetInstanceCount()));
         commandBuffers[currentFrame].drawIndexed(job.meshRes->indexCount, instanceCount, 0, 0, 0);
+        frameGraphDebugCapture.Draw();
         ++opaqueDrawsThisPass;
       }
     }
     commandBuffers[currentFrame].endRendering();
+    frameGraphDebugCapture.BeginPass("Raster composite", frame_debug::PassKind::Graphics);
+    frameGraphDebugCapture.Pipeline("composite.slang", FrameGraphDebugHandle(*compositePipeline));
+    frameGraphDebugCapture.UseResource("Swapchain color", frame_debug::Access::Write, "Color attachment (clear/store)", "ColorAttachmentOptimal");
     // PASS 1b: PRESENT – composite path
     {
       // Transition off-screen to SHADER_READ for sampling (Sync2)
@@ -2484,6 +2539,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       };
       vk::DependencyInfo depOpaqueToSample{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &opaqueToSample2};
       commandBuffers[currentFrame].pipelineBarrier2(depOpaqueToSample);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Opaque scene color", opaqueToSample2);
       if (currentFrame < opaqueSceneColorImageLayouts.size()) {
         opaqueSceneColorImageLayouts[currentFrame] = vk::ImageLayout::eShaderReadOnlyOptimal;
       }
@@ -2503,6 +2559,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       };
       vk::DependencyInfo depSwapchainToColor{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &swapchainToColor2};
       commandBuffers[currentFrame].pipelineBarrier2(depSwapchainToColor);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Swapchain color", swapchainToColor2);
 
       // Begin rendering to swapchain for composite
       colorAttachments[0].imageView = *swapChainImageViews[imageIndex];
@@ -2526,6 +2583,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 		  .subresourceRange    = {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}};
 	  vk::DependencyInfo depA{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &depthToSample};
 	  commandBuffers[currentFrame].pipelineBarrier2(depA);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Scene depth", depthToSample);
 
       //Begin Composite Raster render
       commandBuffers[currentFrame].beginRendering(renderingInfo);
@@ -2549,6 +2607,13 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         0,
         {setComposite},
         {});
+      frameGraphDebugCapture.Descriptor(0, "Raster composite current frame", FrameGraphDebugHandle(setComposite));
+      if (!transparentDescriptorSets.empty() && !IsLoading()) {
+        frameGraphDebugCapture.UseResource("Opaque scene color", frame_debug::Access::Read, "Sampled image", "ShaderReadOnlyOptimal", "set 0 binding 0");
+        frameGraphDebugCapture.UseResource("Scene depth", frame_debug::Access::Read, "Sampled depth", "DepthReadOnlyOptimal", "set 0 binding 1");
+        frameGraphDebugCapture.UseResource("Sky-view LUT", frame_debug::Access::Read, "Sampled image", "General", "set 0 binding 2");
+        frameGraphDebugCapture.UseResource("Sky-view parameters", frame_debug::Access::Read, "Uniform buffer", "", "set 0 binding 3");
+      } else frameGraphDebugCapture.UseResource("Composite fallback textures", frame_debug::Access::Read, "Fallback descriptor set", "ShaderReadOnlyOptimal", "set 0");
 
       // Push exposure/gamma and sRGB flag
       struct CompositePush {
@@ -2576,6 +2641,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
       // Draw fullscreen triangle
       commandBuffers[currentFrame].draw(3, 1, 0, 0);
+      frameGraphDebugCapture.Draw();
 
       commandBuffers[currentFrame].endRendering();
 
@@ -2592,9 +2658,13 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 		  .subresourceRange    = {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}};
 	  vk::DependencyInfo depB{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &depthBack};
 	  commandBuffers[currentFrame].pipelineBarrier2(depB);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Scene depth", depthBack);
       // Restore depth attachment pointer for subsequent passes
       renderingInfo.pDepthAttachment = savedDepthPtr;
     }
+    frameGraphDebugCapture.BeginPass("Transparent scene", frame_debug::PassKind::Graphics);
+    frameGraphDebugCapture.UseResource("Swapchain color", frame_debug::Access::ReadWrite, "Color attachment (load/store, blending)", "ColorAttachmentOptimal");
+    frameGraphDebugCapture.UseResource("Scene depth", frame_debug::Access::Read, "Depth attachment (load/store)", "DepthAttachmentOptimal");
     // PASS 2: RENDER TRANSPARENT OBJECTS TO THE SWAPCHAIN
     {
       // Ensure depth attachment is bound again for the transparent pass
@@ -2613,6 +2683,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
         for (const auto& job : transparentJobs) {
           vk::raii::Pipeline* desiredPipeline = job.entityRes->cachedIsGlass ? &glassGraphicsPipeline : &pbrBlendGraphicsPipeline;
+          frameGraphDebugCapture.Pipeline(job.entityRes->cachedIsGlass ? "Glass" : "PBR blend", FrameGraphDebugHandle(**desiredPipeline));
           if (desiredPipeline != activeTransparentPipeline) {
             commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, **desiredPipeline);
             activeTransparentPipeline = desiredPipeline;
@@ -2632,6 +2703,16 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
             0,
             {*job.entityRes->pbrDescriptorSets[currentFrame], set1},
             {});
+          frameGraphDebugCapture.Descriptor(0, "Entity PBR current frame", FrameGraphDebugHandle(*job.entityRes->pbrDescriptorSets[currentFrame]));
+          frameGraphDebugCapture.Descriptor(1, "Opaque scene / fallback", FrameGraphDebugHandle(set1));
+          frameGraphDebugCapture.UseResource("Material textures", frame_debug::Access::Read, "Sampled material maps", "ShaderReadOnlyOptimal", "set 0 bindings 1-5");
+          frameGraphDebugCapture.UseResource("Lights", frame_debug::Access::Read, "Storage buffer", "", "set 0 binding 6");
+          if (useForwardPlus) {
+            frameGraphDebugCapture.UseResource("Light tile headers", frame_debug::Access::Read, "Storage buffer", "", "set 0 binding 7");
+            frameGraphDebugCapture.UseResource("Light tile indices", frame_debug::Access::Read, "Storage buffer", "", "set 0 binding 8");
+          }
+          if (enableRasterRayQueryShadows && *tlasStructure.handle) frameGraphDebugCapture.UseResource("Scene TLAS", frame_debug::Access::Read, "Ray query shadows", "", "set 0 binding 11");
+          if (!transparentDescriptorSets.empty() && !IsLoading()) frameGraphDebugCapture.UseResource("Opaque scene color", frame_debug::Access::Read, "Refraction background", "ShaderReadOnlyOptimal", "set 1 binding 0");
 
           MaterialProperties pushConstants = job.entityRes->cachedMaterialProps;
           if (job.entityRes->cachedIsLiquid) {
@@ -2644,6 +2725,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           ;
           uint32_t instanceCountT = std::max(1u, static_cast<uint32_t>(job.meshComp->GetInstanceCount()));
           commandBuffers[currentFrame].drawIndexed(job.meshRes->indexCount, instanceCountT, 0, 0, 0);
+          frameGraphDebugCapture.Draw();
         }
       }
       // End transparent rendering pass before any layout transitions (even if no transparent draws)
@@ -2668,6 +2750,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         };
         vk::DependencyInfo depToPresentFinal{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &presentBarrier2};
         commandBuffers[currentFrame].pipelineBarrier2(depToPresentFinal);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Swapchain color", presentBarrier2);
         if (imageIndex < swapChainImageLayouts.size())
           swapChainImageLayouts[imageIndex] = presentBarrier2.newLayout;
       }
@@ -2677,6 +2760,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   // Render ImGui UI overlay AFTER rasterization/ray query (must always execute regardless of render mode)
   // ImGui expects Render() to be called every frame after NewFrame() - skipping it causes hangs
   if (imguiSystem && !imguiSystem->IsFrameRendered()) {
+    frameGraphDebugCapture.BeginPass("ImGui overlay", frame_debug::PassKind::Graphics);
+    frameGraphDebugCapture.UseResource("Swapchain color", frame_debug::Access::ReadWrite, "Color attachment (load/store, blending)", "ColorAttachmentOptimal");
     // When ray query renders, swapchain is in PRESENT layout with valid content.
     // When rasterization renders, swapchain is also in PRESENT layout with valid content.
     // Transition to COLOR_ATTACHMENT with loadOp=eLoad to preserve existing pixels for ImGui overlay.
@@ -2714,6 +2799,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     commandBuffers[currentFrame].beginRendering(imguiRenderingInfo);
 
     imguiSystem->Render(commandBuffers[currentFrame], currentFrame);
+    imguiSystem->DescribeFrameGraphPass(frameGraphDebugCapture, currentFrame);
 
     commandBuffers[currentFrame].endRendering();
 
@@ -2732,6 +2818,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     };
     vk::DependencyInfo depInfoBack{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &colorToPresent};
     commandBuffers[currentFrame].pipelineBarrier2(depInfoBack);
+    FrameGraphDebugBarrier(frameGraphDebugCapture, "Swapchain color", colorToPresent);
     if (imageIndex < swapChainImageLayouts.size())
       swapChainImageLayouts[imageIndex] = colorToPresent.newLayout;
   }
@@ -2788,6 +2875,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   }
 
   vk::PresentInfoKHR presentInfo{.waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphores[imageIndex], .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex};
+  frameGraphDebugCapture.BeginPass("Present", frame_debug::PassKind::Present);
+  frameGraphDebugCapture.UseResource("Swapchain color", frame_debug::Access::Read, "Presentation engine", "PresentSrcKHR");
   vk::Result presentResult = vk::Result::eSuccess;
   try {
     std::lock_guard<std::mutex> lock(queueMutex);
@@ -2802,6 +2891,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     throw std::runtime_error("Failed to present swap chain image");
   }
 
+  finishFrameGraphDebug();
   currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 

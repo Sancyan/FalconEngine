@@ -1087,6 +1087,13 @@ class Renderer {
     static vk::Format determineTextureFormat(const std::string& textureId);
 
   private:
+    frame_debug::Capture frameGraphDebugCapture;
+    frame_debug::ViewerState frameGraphDebugViewer;
+    uint64_t frameGraphDebugSerial = 0;
+    void beginFrameGraphDebug(uint32_t imageIndex);
+    void finishFrameGraphDebug();
+    void drawFrameGraphDebugViewer();
+
     // Platform
     Platform* platform = nullptr;
 
@@ -1344,6 +1351,7 @@ class Renderer {
 
     // Ray query output image (storage image for compute shader output)
     vk::raii::Image rayQueryOutputImage = nullptr;
+    vk::Format rayQueryOutputFormat = vk::Format::eUndefined;
     std::unique_ptr<MemoryPool::Allocation> rayQueryOutputImageAllocation = nullptr;
     vk::raii::ImageView rayQueryOutputImageView = nullptr;
 

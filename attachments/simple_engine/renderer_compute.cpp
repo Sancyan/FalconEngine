@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 #include "renderer.h"
+#include "frame_graph_debug_vulkan.h"
 #include <array>
 #include <fstream>
 #include <iostream>
@@ -293,6 +294,13 @@ bool Renderer::createAtmosphereCommandPool()
 
 void Renderer::dispatchSkyViewLUT(vk::raii::CommandBuffer &cmd, const glm::vec3 &sunDirection, float viewHeight)
 {
+    frameGraphDebugCapture.BeginPass("Sky-view LUT", frame_debug::PassKind::Compute);
+    frameGraphDebugCapture.Pipeline("SkyViewLut.slang", FrameGraphDebugHandle(*skyViewLUTPipeline));
+    frameGraphDebugCapture.Descriptor(0, "Atmosphere LUTs", FrameGraphDebugHandle(*atmoSphereDescriptorSets[0]));
+    frameGraphDebugCapture.UseResource("Atmosphere parameters", frame_debug::Access::Read, "Uniform buffer", "", "set 0 binding 0");
+    frameGraphDebugCapture.UseResource("Transmittance LUT", frame_debug::Access::Read, "Sampled image", "General", "set 0 binding 1");
+    frameGraphDebugCapture.UseResource("Multi-scatter LUT", frame_debug::Access::Read, "Sampled image", "General", "set 0 binding 5");
+    frameGraphDebugCapture.UseResource("Sky-view LUT", frame_debug::Access::Write, "Storage image", "General", "set 0 binding 6");
 	vk::MemoryBarrier2 pre{
 	    .srcStageMask  = vk::PipelineStageFlagBits2::eComputeShader | vk::PipelineStageFlagBits2::eFragmentShader,
 	    .srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
@@ -309,7 +317,8 @@ void Renderer::dispatchSkyViewLUT(vk::raii::CommandBuffer &cmd, const glm::vec3 
 		float     viewHeight;
 	} pc{sunDirection, viewHeight};
 	cmd.pushConstants<decltype(pc)>(*atmoSpherePipelineLayout, vk::ShaderStageFlagBits::eCompute, 0, pc);
-	cmd.dispatch(24, 16, 1);        // ceil(192/8), ceil(108/8), NOTE: 108 is bumped up to 128 therefore y is changed to 16 groups of 8 y threads
+	cmd.dispatch(24, 16, 1);
+    frameGraphDebugCapture.Dispatch();        // ceil(192/8), ceil(108/8), NOTE: 108 is bumped up to 128 therefore y is changed to 16 groups of 8 y threads
 
     vk::MemoryBarrier2 post{
 	    .srcStageMask = vk::PipelineStageFlagBits2::eComputeShader, .srcAccessMask = vk::AccessFlagBits2::eShaderWrite, .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader, .dstAccessMask = vk::AccessFlagBits2::eShaderRead};
@@ -321,11 +330,17 @@ void Renderer::dispatchAtmosphereLUTs(vk::raii::CommandBuffer& cmd, const Render
 {
 	std::memcpy(atmosphereParamsMapped, &params, sizeof(AtmosphereParameters));
 
+    frameGraphDebugCapture.BeginPass("Transmittance LUT", frame_debug::PassKind::Compute, "Atmosphere parameter change");
+    frameGraphDebugCapture.Pipeline("TransmittanceLUT.slang", FrameGraphDebugHandle(*transmittanceLUTPipeline));
+    frameGraphDebugCapture.Descriptor(0, "Atmosphere LUTs", FrameGraphDebugHandle(*atmoSphereDescriptorSets[0]));
+    frameGraphDebugCapture.UseResource("Atmosphere parameters", frame_debug::Access::Read, "Uniform buffer", "", "set 0 binding 0");
+    frameGraphDebugCapture.UseResource("Transmittance LUT", frame_debug::Access::Write, "Storage image", "General", "set 0 binding 3");
 	// Pass 1: Transmittance — 256x64 texels, 8x8 threads/group
 	cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *transmittanceLUTPipeline);
 	cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *atmoSpherePipelineLayout, 0,
 	                       {*atmoSphereDescriptorSets[0]}, {});
-	cmd.dispatch(32, 8, 1);        // 256/8, 64/8
+	cmd.dispatch(32, 8, 1);
+    frameGraphDebugCapture.Dispatch();        // 256/8, 64/8
 
 	// Barrier: Transmittance write must finish before Multi-Scatter reads it.
 	// Same layout on both sides (eGeneral) - this is a memory/execution barrier, not a layout transition.
@@ -341,9 +356,17 @@ void Renderer::dispatchAtmosphereLUTs(vk::raii::CommandBuffer& cmd, const Render
 	cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
 	                    {}, {}, {}, {barrier});
 
+    frameGraphDebugCapture.Transition("Transmittance LUT", "General", "General", "ComputeShader / ShaderWrite", "ComputeShader / ShaderRead");
+    frameGraphDebugCapture.BeginPass("Multi-scatter LUT", frame_debug::PassKind::Compute);
+    frameGraphDebugCapture.Pipeline("MultiScatterLUT.slang", FrameGraphDebugHandle(*multiScatterLUTPipeline));
+    frameGraphDebugCapture.Descriptor(0, "Atmosphere LUTs (inherited)", FrameGraphDebugHandle(*atmoSphereDescriptorSets[0]));
+    frameGraphDebugCapture.UseResource("Atmosphere parameters", frame_debug::Access::Read, "Uniform buffer", "", "set 0 binding 0");
+    frameGraphDebugCapture.UseResource("Transmittance LUT", frame_debug::Access::Read, "Sampled image", "General", "set 0 binding 1");
+    frameGraphDebugCapture.UseResource("Multi-scatter LUT", frame_debug::Access::Write, "Storage image", "General", "set 0 binding 4");
 	// Pass 2: Multi-Scatter — 32x32 texels, one thread GROUP per texel (64 threads inside each group do the integration)
 	cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *multiScatterLUTPipeline);
-	cmd.dispatch(32, 32, 1);        // one group per texel - no division needed, numthreads.z already covers the 64
+	cmd.dispatch(32, 32, 1);
+    frameGraphDebugCapture.Dispatch();        // one group per texel - no division needed, numthreads.z already covers the 64
 
 }
 
@@ -686,11 +709,19 @@ void Renderer::dispatchForwardPlus(vk::raii::CommandBuffer& cmd, uint32_t tilesX
   if (!haveLightBuffer)
     return;
 
+  frameGraphDebugCapture.BeginPass("Forward+ light culling", frame_debug::PassKind::Compute);
+  frameGraphDebugCapture.Pipeline("forward_plus_cull.slang", FrameGraphDebugHandle(*forwardPlusPipeline));
+  frameGraphDebugCapture.Descriptor(0, "Forward+ current frame", FrameGraphDebugHandle(*f.computeSet));
+  frameGraphDebugCapture.UseResource("Lights", frame_debug::Access::Read, "Storage buffer", "", "set 0 binding 0");
+  frameGraphDebugCapture.UseResource("Forward+ parameters", frame_debug::Access::Read, "Uniform buffer", "", "set 0 binding 3");
+  frameGraphDebugCapture.UseResource("Light tile headers", frame_debug::Access::Write, "Storage buffer", "", "set 0 binding 1");
+  frameGraphDebugCapture.UseResource("Light tile indices", frame_debug::Access::Write, "Storage buffer", "", "set 0 binding 2");
   cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *forwardPlusPipeline);
   vk::DescriptorSet set = *f.computeSet;
   cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *forwardPlusPipelineLayout, 0, set, {});
   // One invocation per cluster (X,Y by workgroup grid, Z as third dimension)
   cmd.dispatch(tilesX, tilesY, slicesZ);
+  frameGraphDebugCapture.Dispatch();
   // Make tilelist writes visible to fragment shader (Sync2)
   vk::MemoryBarrier2 memBarrier2{
     .srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,

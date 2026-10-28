@@ -131,6 +131,8 @@ set(SOURCES_COMMON
     platform.cpp
     renderer_core.cpp
     renderer_rendering.cpp
+    renderer_framegraph_debug.cpp
+    frame_graph_debug_imgui.cpp
     renderer_pipelines.cpp
     renderer_compute.cpp
     renderer_utils.cpp
@@ -302,3 +304,21 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/README.md)
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/README.md DESTINATION share/SimpleEngine)
 endif()
 endif ()
+
+# Optional development-only architecture diagrams.
+include(CMake/Architecture.cmake)
+
+# Optional CPU-only tests for the frame graph recorder and bundled ImGui viewer.
+option(SIMPLE_ENGINE_BUILD_FRAME_GRAPH_TESTS "Build frame graph debug tests" OFF)
+if(SIMPLE_ENGINE_BUILD_FRAME_GRAPH_TESTS)
+    enable_testing()
+    add_executable(FrameGraphDebugTests
+        tests/frame_graph_debug_tests.cpp
+        frame_graph_debug_imgui.cpp
+        imgui/imgui.cpp
+        imgui/imgui_draw.cpp)
+    target_include_directories(FrameGraphDebugTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(FrameGraphDebugTests PRIVATE cxx_std_20)
+    target_compile_definitions(FrameGraphDebugTests PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    add_test(NAME frame_graph_debug COMMAND FrameGraphDebugTests)
+endif()
