@@ -1070,7 +1070,7 @@ float3 shadeDiffuse(HitInfo hit) {
 
     float3 reflectance = hit.baseColor; // Material's RGB diffuse reflectance
 
-    // Irradiance on a surface facing the incoming light source
+    // Irradiance on a surface facing the incoming hard coded light source
     float3 perpendicularIrradiance = float3(1.0, 1.0, 1.0);
 
     float3 f = evaluateLambert(reflectance);
@@ -1134,20 +1134,33 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     HitInfo hit = traceRay(rayOrigin, rayDir, 0.0001, 10000.0, rngState);
 
     if (hit.hit) {
-        float3 bounceDir = sampleDiffuseWorld(hit.normal, rngState);
+        const uint sampleCount = 4;
+        float3 reflectedSum = float3(0.0);
 
         float3 bounceOrigin =
     hit.worldPos + normalize(hit.normal) * RQ_RAY_EPS;
 
-        HitInfo bounceHit = traceRay(
-    bounceOrigin, bounceDir,
-    RQ_RAY_EPS, 10000.0, rngState);
+        for (uint i = 0; i < sampleCount; ++i)
+        {
+            float3 bounceDir = sampleDiffuseWorld(hit.normal, rngState);
 
-        float3 incoming = bounceHit.hit ? shadeDiffuse(bounceHit) : skyColor(bounceDir);
+            HitInfo bounceHit = traceRay(
+        bounceOrigin, bounceDir,
+        RQ_RAY_EPS, 10000.0, rngState);
 
-        float3 c = hit.baseColor * incoming;
+            float3 incoming = bounceHit.hit
+        ? shadeDiffuse(bounceHit)
+        : skyColor(bounceDir);
+
+            reflectedSum += hit.baseColor * incoming;
+        }
+
+        float3 reflectedAverage = reflectedSum / float(sampleCount);
+        float3 directLight = shadeDiffuse(hit);
+
         // Output linear HDR-ish color; composite pass will apply exposure/gamma.
-        outputImage[pixelCoord] = float4(c, 1.0);
+        outputImage[pixelCoord] =
+        float4(directLight + reflectedAverage, 1.0);
 
     } else {
         // Sky/background color
