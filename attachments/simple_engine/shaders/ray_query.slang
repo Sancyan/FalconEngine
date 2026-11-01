@@ -140,6 +140,51 @@ float2 rqSampleDisk(inout uint state)
     return float2(cos(a), sin(a)) * r;
 }
 
+float3 sampleHemisphere(inout uint rngState)
+{
+    float2 disk = rqSampleDisk(rngState);
+
+    float y = sqrt(max(0.0, 1.0 - dot(disk, disk)));
+
+    return float3(disk.x, y, disk.y);
+}
+
+//Helper to convert direction vector from local space to world space
+float3 LocalToWorld(float3 localDir, float3 normal)
+{
+    float3 n = normalize(normal);
+
+    float3 helper = abs(n.z) < 0.999
+        ? float3(0, 0, 1)
+        : float3(0, 1, 0);
+
+    float3 t = normalize(cross(n, helper));
+    float3 b = cross(t, n);
+
+    return localDir.x * t
+         + localDir.y * n
+         + localDir.z * b;
+}
+
+float3 sampleDiffuseWorld(
+    float3 shadingNormal, inout uint rngState)
+{
+    float3 n = normalize(shadingNormal);
+
+    float3 helper = abs(n.z) < 0.999
+        ? float3(0, 0, 1)
+        : float3(0, 1, 0);
+
+    float3 t = normalize(cross(helper, n));
+    float3 b = cross(n, t);
+
+    // Move the existing sampler's height from Y to Z.
+    float3 local = sampleHemisphere(rngState).xzy;
+
+    return local.x * t + local.y * b + local.z * n;
+}
+
+
 float3 skyColor(float3 dir) {
     float t = saturate(0.5 * (dir.y + 1.0));
     float3 a = float3(0.06, 0.06, 0.09);
@@ -1023,17 +1068,25 @@ float3 shadeDiffuse(HitInfo hit) {
     // Direction from hit surface toward light
     float3 wi = normalize(float3(0.6, 0.8, 0.0));
 
-    float3 reflectance = hit.baseColor * float3(1.0, 0.5, 1.0); // Material's RGB diffuse reflectance
+    float3 reflectance = hit.baseColor; // Material's RGB diffuse reflectance
 
     // Irradiance on a surface facing the incoming light source
     float3 perpendicularIrradiance = float3(1.0, 1.0, 1.0);
 
     float3 f = evaluateLambert(reflectance);
 
+    //wi is where light comes from, wo is light towards camera/viewer
     //cosine theta is equivalent to the dot of the wi and the normal 
     float cosine = max(dot(normal, wi), 0);
 
-    return f * perpendicularIrradiance * cosine;
+    float3 shadowOrigin = hit.worldPos + normal * RQ_RAY_EPS;
+
+    //Trace shadow 
+    bool blocked = traceShadowOccluded(shadowOrigin, wi, RQ_RAY_EPS, 100000.0);
+
+    float visibility = blocked ? 0.0 : 1;
+
+    return f * perpendicularIrradiance * cosine * visibility;
 }
 
 // Compute shader entry point
@@ -1079,9 +1132,20 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     
     uint rngState = rqHash(pixelCoord.x + 4099u * pixelCoord.y + 131071u);
     HitInfo hit = traceRay(rayOrigin, rayDir, 0.0001, 10000.0, rngState);
-    
+
     if (hit.hit) {
-        float3 c = shadeDiffuse(hit);
+        float3 bounceDir = sampleDiffuseWorld(hit.normal, rngState);
+
+        float3 bounceOrigin =
+    hit.worldPos + normalize(hit.normal) * RQ_RAY_EPS;
+
+        HitInfo bounceHit = traceRay(
+    bounceOrigin, bounceDir,
+    RQ_RAY_EPS, 10000.0, rngState);
+
+        float3 incoming = bounceHit.hit ? shadeDiffuse(bounceHit) : skyColor(bounceDir);
+
+        float3 c = hit.baseColor * incoming;
         // Output linear HDR-ish color; composite pass will apply exposure/gamma.
         outputImage[pixelCoord] = float4(c, 1.0);
 
