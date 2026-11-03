@@ -57,8 +57,8 @@ struct RayQueryUniforms {
     [[vk::offset(268)]] int shadowSampleCount;    // 1 = hard shadows (single shadow ray)
     [[vk::offset(272)]] float shadowSoftness;     // 0 = hard; otherwise scales effective light radius (see shader)
     [[vk::offset(276)]] float reflectionIntensity; // user control
-    [[vk::offset(280)]] float _padShadow1;
-    [[vk::offset(284)]] float _padShadow2;
+    [[vk::offset(280)]] uint frameCounter;
+    [[vk::offset(284)]] uint historyCounter;
 };
 
 // Compute shader descriptor bindings
@@ -1129,8 +1129,12 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     // Primary ray from camera position through the pixel
     float3 rayOrigin = ubo.camPos.xyz;
     float3 rayDir = normalize(farWorld - nearWorld);
-    
-    uint rngState = rqHash(pixelCoord.x + 4099u * pixelCoord.y + 131071u);
+
+    uint pixelSeed = rqHash(
+    pixelCoord.x + 4099u * pixelCoord.y + 131071u);
+
+    uint rngState = rqHash(
+    pixelSeed ^ rqHash(ubo.frameCounter));
     HitInfo hit = traceRay(rayOrigin, rayDir, 0.0001, 10000.0, rngState);
 
     if (hit.hit) {

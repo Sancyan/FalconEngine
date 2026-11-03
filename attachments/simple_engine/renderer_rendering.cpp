@@ -1914,9 +1914,14 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         ubo.geometryInfoCount = static_cast<int>(tlasInstanceCount);
         // Provide material buffer count for shader-side bounds checking
         ubo.materialCount = static_cast<int>(materialCountCPU);
+		ubo.frameCounter  = rayQueryFrameCounter;
+		ubo.historyCount = historyCounter;
 
         // Copy to mapped memory
         std::memcpy(rayQueryUniformBuffersMapped[currentFrame], &ubo, sizeof(RayQueryUniformBufferObject));
+
+        //Iterate current frame count
+		++rayQueryFrameCounter;
       } else {
         // Keep concise error for visibility
         std::cerr << "Ray Query UBO not mapped for frame " << currentFrame << "\n";

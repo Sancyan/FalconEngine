@@ -182,7 +182,8 @@ struct RayQueryUniformBufferObject {
   alignas(4) int shadowSampleCount; // 1 = hard shadows; >1 = multi-sample
   alignas(4) float shadowSoftness; // 0 = hard; otherwise scales effective light radius (fraction of range)
   alignas(4) float reflectionIntensity; // User control for glass reflection strength
-  alignas(4) float _padShadow[2]{};
+  alignas(4) uint32_t frameCounter = 0;
+  alignas(4) uint32_t historyCount    = 0;
 };
 
 static_assert(sizeof(RayQueryUniformBufferObject) == 288, "RayQueryUniformBufferObject size must match shader layout");
@@ -206,6 +207,8 @@ static_assert(offsetof(RayQueryUniformBufferObject, absorptionScale) == 260);
 static_assert(offsetof(RayQueryUniformBufferObject, _pad1) == 264);
 static_assert(offsetof(RayQueryUniformBufferObject, shadowSampleCount) == 268);
 static_assert(offsetof(RayQueryUniformBufferObject, shadowSoftness) == 272);
+static_assert(offsetof(RayQueryUniformBufferObject, frameCounter) == 280);
+static_assert(offsetof(RayQueryUniformBufferObject, historyCount) == 284);
 
 /**
  * @brief Structure for PBR material properties.
@@ -1242,6 +1245,8 @@ class Renderer {
 	AtmosphereManager atmoManager{};
 	//AtmosphereParameters atmoParams{};
 
+    uint32_t rayQueryFrameCounter = 0;
+	uint32_t historyCounter         = 0;
 
 
     // Thread safety for queue access - unified mutex since queues may share the same underlying VkQueue
