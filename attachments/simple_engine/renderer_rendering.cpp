@@ -769,10 +769,14 @@ void Renderer::recreateSwapChain() {
   rayQueryDescriptorsWritten.clear();
   rayQueryDescriptorsDirtyMask.store(0u, std::memory_order_relaxed);
 
-  // Destroy ray query output image resources - they're sized to old swapchain dimensions
+  // Destroy ray query output and history image resources - they're sized to old swapchain dimensions
   rayQueryOutputImageView = vk::raii::ImageView(nullptr);
   rayQueryOutputImage = vk::raii::Image(nullptr);
   rayQueryOutputImageAllocation = nullptr;
+
+  rayQueryHistoryImageView = vk::raii::ImageView(nullptr);
+  rayQueryHistoryImage     = vk::raii::Image(nullptr);
+  rayQueryHistoryImageAllocation = nullptr;
 
   createGraphicsPipeline();
   createPBRPipeline();

@@ -1360,6 +1360,12 @@ class Renderer {
     std::unique_ptr<MemoryPool::Allocation> rayQueryOutputImageAllocation = nullptr;
     vk::raii::ImageView rayQueryOutputImageView = nullptr;
 
+    //Ray query history image(storage image for storing per-pixel lighting averages)
+	vk::raii::Image rayQueryHistoryImage = nullptr;
+	vk::Format      rayQueryHistoryFormat = vk::Format::eUndefined;
+	std::unique_ptr<MemoryPool::Allocation> rayQueryHistoryImageAllocation = nullptr;
+	vk::raii::ImageView                     rayQueryHistoryImageView       = nullptr;
+
     // Acceleration structures for ray query
     struct AccelerationStructure {
       vk::raii::Buffer buffer = nullptr;

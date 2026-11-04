@@ -1330,12 +1330,65 @@ bool Renderer::createRayQueryResources() {
     // Use an HDR-capable format for Ray Query so PBR lighting can accumulate in linear space
     // before composite applies exposure/gamma.
     // Fall back to R8G8B8A8_UNORM if the device does not support storage-image usage.
-    vk::Format rqFormat = vk::Format::eR16G16B16A16Sfloat; {
-      auto props = physicalDevice.getFormatProperties(rqFormat);
-      if (!(props.optimalTilingFeatures & vk::FormatFeatureFlagBits::eStorageImage)) {
-        rqFormat = vk::Format::eR8G8B8A8Unorm;
-      }
-    }
+          vk::Format rqFormat = vk::Format::eR16G16B16A16Sfloat;
+	      vk::Format historyFormat = vk::Format::eR32G32B32A32Sfloat;
+	{
+		auto props = physicalDevice.getFormatProperties(rqFormat);
+		auto historyProperties = physicalDevice.getFormatProperties(historyFormat);
+
+		if (!(props.optimalTilingFeatures & vk::FormatFeatureFlagBits::eStorageImage))
+		{
+			rqFormat = vk::Format::eR8G8B8A8Unorm;
+		}
+        if (!(historyProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eStorageImage))
+		{
+			std::cerr << "Failed to adopt optimal formats, no ray query resource creation: " << std::endl;
+			return false;
+        }
+	}
+      // Frame history image creation block
+      auto [historyImage, historyAllocation] = memoryPool->createImage(
+		  swapChainExtent.width,
+		  swapChainExtent.height,
+		  historyFormat,
+		  vk::ImageTiling::eOptimal,
+		  vk::ImageUsageFlagBits::eStorage,
+		  vk::MemoryPropertyFlagBits::eDeviceLocal,
+		  1,
+		  vk::SharingMode::eExclusive,
+		  {}//queue Family indicies
+      );
+
+      rayQueryHistoryImage =           std::move(historyImage);
+	  rayQueryHistoryFormat          = historyFormat;
+	  rayQueryHistoryImageAllocation = std::move(historyAllocation);
+
+      
+	  vk::ImageViewCreateInfo historyCreateInfo{};
+	  historyCreateInfo.image = *rayQueryHistoryImage;
+	  historyCreateInfo.viewType                        = vk::ImageViewType::e2D;
+	  historyCreateInfo.format                          = historyFormat;
+	  historyCreateInfo.subresourceRange.aspectMask     = vk::ImageAspectFlagBits::eColor;
+	  historyCreateInfo.subresourceRange.baseMipLevel   = 0;
+	  historyCreateInfo.subresourceRange.levelCount     = 1;
+	  historyCreateInfo.subresourceRange.baseArrayLayer = 0;
+	  historyCreateInfo.subresourceRange.layerCount     = 1;
+
+      rayQueryHistoryImageView = vk::raii::ImageView(device, historyCreateInfo);
+
+      transitionImageLayout(*rayQueryHistoryImage, historyFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, 1);
+      //Reset the frame counter on new history image creation
+	  historyCounter = 0;
+
+      //End of history Creation
+	  if (*debugMessenger)
+	  {
+		  device.setDebugUtilsObjectNameEXT(*rayQueryHistoryImage,
+			                                "RayQuery.History.Image");
+
+		  device.setDebugUtilsObjectNameEXT(*rayQueryHistoryImageView,
+			                                "RayQuery.History.View");
+	  }
     auto [image, allocation] = memoryPool->createImage(
       swapChainExtent.width,
       swapChainExtent.height,

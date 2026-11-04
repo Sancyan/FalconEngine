@@ -553,6 +553,11 @@ void Renderer::Cleanup() {
   rayQueryOutputImage = nullptr;
   rayQueryOutputImageAllocation = nullptr;
 
+  //7.6 Ray query History image
+  rayQueryHistoryImageView = nullptr;
+  rayQueryHistoryImage     = nullptr;
+  rayQueryHistoryImageAllocation = nullptr;
+
   // Clear acceleration structures (BLAS and TLAS buffers)
   blasStructures.clear();
   tlasStructure = AccelerationStructure{};
