@@ -1246,7 +1246,15 @@ class Renderer {
 	//AtmosphereParameters atmoParams{};
 
     uint32_t rayQueryFrameCounter = 0;
-	uint32_t historyCounter         = 0;
+    uint32_t historyCounter = 0;
+    struct RayQueryCameraSnapshot {
+      glm::mat4 view;
+      glm::mat4 projection;
+      glm::vec4 position;
+
+      bool operator==(const RayQueryCameraSnapshot&) const = default;
+    };
+    std::optional<RayQueryCameraSnapshot> lastSubmittedRayQueryCamera;
 
 
     // Thread safety for queue access - unified mutex since queues may share the same underlying VkQueue

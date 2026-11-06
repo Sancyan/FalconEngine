@@ -1074,6 +1074,9 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
   // Track if ray query rendered successfully this frame to skip rasterization code path
   bool rayQueryRenderedThisFrame = false;
+  bool rayQueryDispatchedThisFrame = false;
+  std::optional<RayQueryCameraSnapshot> rayQueryCameraThisFrame;
+  uint32_t rayQueryHistoryCountThisFrame = 0;
 
   // --- Extract lights for the frame ---
   // Build a single light list once per frame (emissive lights only for this scene)
@@ -1885,9 +1888,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         // (the dirty flag isn't automatically set when camera position changes)
         camera->ForceViewMatrixUpdate();
 
-        // Get camera matrices
-        glm::mat4 camView = camera->GetViewMatrix();
-        ubo.view = camView;
+        ubo.view = camera->GetViewMatrix();
         ubo.proj = camera->GetProjectionMatrix();
         ubo.proj[1][1] *= -1; // Flip Y for Vulkan
         ubo.camPos = glm::vec4(camera->GetPosition(), 1.0f);
@@ -1918,8 +1919,11 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         ubo.geometryInfoCount = static_cast<int>(tlasInstanceCount);
         // Provide material buffer count for shader-side bounds checking
         ubo.materialCount = static_cast<int>(materialCountCPU);
-		ubo.frameCounter  = rayQueryFrameCounter;
-		ubo.historyCount = historyCounter;
+        ubo.frameCounter = rayQueryFrameCounter;
+        rayQueryCameraThisFrame = RayQueryCameraSnapshot{ubo.view, ubo.proj, ubo.camPos};
+        const bool cameraMatchesHistory = rayQueryCameraThisFrame == lastSubmittedRayQueryCamera;
+        ubo.historyCount = cameraMatchesHistory ? historyCounter : 0;
+        rayQueryHistoryCountThisFrame = ubo.historyCount;
 
         // Copy to mapped memory
         std::memcpy(rayQueryUniformBuffersMapped[currentFrame], &ubo, sizeof(RayQueryUniformBufferObject));
@@ -1931,10 +1935,30 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         std::cerr << "Ray Query UBO not mapped for frame " << currentFrame << "\n";
       }
 
+      vk::ImageMemoryBarrier2 historyToGrab{};
+	  historyToGrab.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader;
+	  historyToGrab.srcAccessMask = vk::AccessFlagBits2::eShaderWrite | vk::AccessFlagBits2::eShaderRead;
+	  historyToGrab.dstStageMask  = vk::PipelineStageFlagBits2::eComputeShader;
+	  historyToGrab.dstAccessMask               = vk::AccessFlagBits2::eShaderWrite | vk::AccessFlagBits2::eShaderRead;
+	  historyToGrab.oldLayout     = vk::ImageLayout::eGeneral;
+	  historyToGrab.newLayout     = vk::ImageLayout::eGeneral;
+	  historyToGrab.image         = *rayQueryHistoryImage;
+	  historyToGrab.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+	  historyToGrab.subresourceRange.levelCount = 1;
+	  historyToGrab.subresourceRange.layerCount = 1;
+
+      vk::DependencyInfo depHistory{};
+	  depHistory.imageMemoryBarrierCount = 1;
+	  depHistory.pImageMemoryBarriers    = &historyToGrab;
+
+	  commandBuffers[currentFrame].pipelineBarrier2(depHistory);
+
       // Dispatch compute shader (8x8 workgroups as defined in shader)
       uint32_t workgroupsX = (swapChainExtent.width + 7) / 8;
       uint32_t workgroupsY = (swapChainExtent.height + 7) / 8;
       commandBuffers[currentFrame].dispatch(workgroupsX, workgroupsY, 1);
+      rayQueryDispatchedThisFrame = true;
+
       frameGraphDebugCapture.Dispatch();
 
       // Barrier: wait for compute shader to finish writing to output image,
@@ -2881,6 +2905,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed); {
     std::lock_guard<std::mutex> lock(queueMutex);
     graphicsQueue.submit2(submit2, *inFlightFences[currentFrame]);
+  }
+  if (rayQueryDispatchedThisFrame) {
+    lastSubmittedRayQueryCamera = rayQueryCameraThisFrame;
+    historyCounter = rayQueryCameraThisFrame ? rayQueryHistoryCountThisFrame + 1 : 0;
   }
 
   vk::PresentInfoKHR presentInfo{.waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphores[imageIndex], .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex};

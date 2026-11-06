@@ -1199,7 +1199,7 @@ void Renderer::pushMaterialProperties(vk::CommandBuffer commandBuffer, const Mat
 
 bool Renderer::createRayQueryDescriptorSetLayout() {
   // Production layout: 7 bindings (0..6), no debug buffer at 7
-  std::array<vk::DescriptorSetLayoutBinding, 7> bindings{};
+  std::array<vk::DescriptorSetLayoutBinding, 8> bindings{};
 
   // Binding 0: UBO (UniformBufferObject)
   bindings[0].binding = 0;
@@ -1243,11 +1243,18 @@ bool Renderer::createRayQueryDescriptorSetLayout() {
   bindings[6].descriptorCount = RQ_MAX_TEX; // large static array
   bindings[6].stageFlags = vk::ShaderStageFlagBits::eCompute;
 
+  //Binding 7: History Image
+
+  bindings[7].binding         = 7;
+  bindings[7].descriptorType  = vk::DescriptorType::eStorageImage;
+  bindings[7].descriptorCount = 1;        // large static array
+  bindings[7].stageFlags      = vk::ShaderStageFlagBits::eCompute;
+
   // Descriptor indexing / update-after-bind support:
   // The ray query shader indexes a large `eCombinedImageSampler` array with a per-pixel varying index.
   // On some drivers this requires descriptor indexing features + layout binding flags to avoid the
   // array collapsing to slot 0 (resulting in "no textures" even when `texIndex>0`).
-  std::array<vk::DescriptorBindingFlags, 7> bindingFlags{};
+  std::array<vk::DescriptorBindingFlags, 8> bindingFlags{};
   if (descriptorIndexingEnabled) {
     // Binding 6 is the large sampled texture array.
     bindingFlags[6] = vk::DescriptorBindingFlagBits::eUpdateAfterBind |

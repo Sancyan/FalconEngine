@@ -1596,7 +1596,8 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
     std::vector<vk::WriteDescriptorSet> writes;
     vk::DescriptorBufferInfo uboInfo{};
     vk::WriteDescriptorSetAccelerationStructureKHR tlasInfo{};
-    vk::DescriptorImageInfo imageInfo{};
+    vk::DescriptorImageInfo  imageInfo{};
+	vk::DescriptorImageInfo  historyInfo{};
     vk::DescriptorBufferInfo lightInfo{};
     vk::DescriptorBufferInfo geoInfo{};
     vk::DescriptorBufferInfo matInfo{};
@@ -1704,6 +1705,19 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
       rayQueryTexFallbackSlots.resize(RQ_SLOT_DEFAULT_EMISSIVE + 1);
       rayQueryTexCount = std::max<uint32_t>(rayQueryTexCount, static_cast<uint32_t>(rayQueryTexKeys.size()));
     }
+
+    // Binding 7: History Image
+	historyInfo.imageView = *rayQueryHistoryImageView;
+	historyInfo.imageLayout = vk::ImageLayout::eGeneral;
+
+	vk::WriteDescriptorSet historyWrite{};
+	historyWrite.dstSet          = *rayQueryDescriptorSets[frameIndex];
+	historyWrite.dstBinding      = 7;
+	historyWrite.dstArrayElement = 0;
+	historyWrite.descriptorCount = 1;
+	historyWrite.descriptorType  = vk::DescriptorType::eStorageImage;
+	historyWrite.pImageInfo      = &historyInfo;
+	writes.push_back(historyWrite);
 
     const uint32_t copyCount = std::min<uint32_t>(rayQueryTexCount, RQ_MAX_TEX);
     // First-time init writes the full array with defaults so the set is fully defined.

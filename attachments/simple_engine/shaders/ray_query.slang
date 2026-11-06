@@ -72,6 +72,7 @@ struct RayQueryUniforms {
 // Must match Renderer::RQ_MAX_TEX in C++ (currently 2048)
 static const uint RQ_MAX_TEX = 2048;
 [[vk::binding(6, 0)]] Sampler2D baseColorTex[RQ_MAX_TEX];
+[[vk::binding(7, 0)]] RWTexture2D<float4> historyImage; //history color acumulation image
 
 // (No debug buffer in production layout)
 
@@ -187,8 +188,8 @@ float3 sampleDiffuseWorld(
 
 float3 skyColor(float3 dir) {
     float t = saturate(0.5 * (dir.y + 1.0));
-    float3 a = float3(0.06, 0.06, 0.09);
-    float3 b = float3(0.20, 0.25, 0.32);
+    float3 a = float3(0.45, 0.22, 0.12);
+    float3 b = float3(0.65, 0.48, 0.35);
     return lerp(a, b, t);
 }
 
@@ -1137,6 +1138,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     pixelSeed ^ rqHash(ubo.frameCounter));
     HitInfo hit = traceRay(rayOrigin, rayDir, 0.0001, 10000.0, rngState);
 
+    float3 currentRadiance;
+
     if (hit.hit) {
         const uint sampleCount = 4;
         float3 reflectedSum = float3(0.0);
@@ -1152,9 +1155,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         bounceOrigin, bounceDir,
         RQ_RAY_EPS, 10000.0, rngState);
 
-            float3 incoming = bounceHit.hit
-        ? shadeDiffuse(bounceHit)
-        : skyColor(bounceDir);
+            float3 incoming = bounceHit.hit ? shadeDiffuse(bounceHit) : skyColor(bounceDir);
 
             reflectedSum += hit.baseColor * incoming;
         }
@@ -1162,12 +1163,25 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         float3 reflectedAverage = reflectedSum / float(sampleCount);
         float3 directLight = shadeDiffuse(hit);
 
-        // Output linear HDR-ish color; composite pass will apply exposure/gamma.
-        outputImage[pixelCoord] =
-        float4(directLight + reflectedAverage, 1.0);
+        currentRadiance = directLight + reflectedAverage;
 
     } else {
         // Sky/background color
-        outputImage[pixelCoord] = float4(skyColor(rayDir), 1.0);
+        currentRadiance = float3(skyColor(rayDir));
     }
+
+    if (ubo.historyCounter > 0) {
+        float4 rbgHistory = historyImage[pixelCoord];
+
+        // A*N + X / N + 1 Formula for history accumulation average
+        currentRadiance = ((rbgHistory.rgb * ubo.historyCounter) + currentRadiance) / (ubo.historyCounter + 1);
+    }
+
+    // Output linear HDR-ish color; composite pass will apply exposure/gamma or sky color.
+    outputImage[pixelCoord] =
+        float4(currentRadiance, 1.0);
+
+    // Write result to history average image as well
+    historyImage[pixelCoord] = 
+        float4(currentRadiance, 1.0);
 }
