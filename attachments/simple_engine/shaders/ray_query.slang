@@ -833,6 +833,7 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax, inout 
         float3 F0 = float3(0.04, 0.04, 0.04);
         float3 albedo = baseColor.rgb;
 
+        //Use specular or metallic workflow based on material properties
         if (material.useSpecGlossWorkflow != 0) {
             float3 specColorSG = mrOrSpecGloss.rgb * material.specularFactor;
             float gloss = clamp(mrOrSpecGloss.a * material.glossinessFactor, 0.0, 1.0);
@@ -1018,14 +1019,16 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax, inout 
                     visibility = occluded ? 0.0 : 1.0;
                 }
 
+                //H is halfway vector between wo(Camera View) and wi(Light source or bounce direction)
                 float3 H = normalize(V + L);
                 float NdotV = max(dot(N, V), 0.0);
                 float NdotH = max(dot(N, H), 0.0);
                 float HdotV = max(dot(H, V), 0.0);
-                float D = DistributionGGX(NdotH, roughness);
-                float G = GeometrySmith(NdotV, NdotL, roughness);
+                //float D = DistributionGGX(NdotH, roughness);
+                //float G = GeometrySmith(NdotV, NdotL, roughness);
                 float3 F = FresnelSchlick(HdotV, F0);
-                float3 spec = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);
+                // float3 spec = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);
+                float3 spec = evaluateGGXSpecular(NdotH, NdotV, NdotL, roughness, F);
                 float3 kD = (1.0 - F) * (1.0 - metallic) * (1.0 - T_diff);
 
                 specAcc += spec * radiance * NdotL * visibility;
@@ -1057,17 +1060,28 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax, inout 
     return result;
 }
 
+float3 evaluateGGXSpecular(float NdotH, float NdotV, float NdotL, float roughness, float3 F)
+{
+    float D = DistributionGGX(NdotH, roughness);
+    float G = GeometrySmith(NdotV, NdotL, roughness);
+    float3 spec = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);
+
+    return spec;
+}
+
 float3 evaluateLambert(float3 reflectance)
 {
     //Lambert = rho/pi
     return reflectance / PI;
 }
 
-float3 shadeDiffuse(HitInfo hit) {
+float3 shadeDiffuse(HitInfo hit, float3 outGoingDir) {
     float3 normal = normalize(hit.normal);
 
     // Direction from hit surface toward light
     float3 wi = normalize(float3(0.6, 0.8, 0.0));
+
+    float3 wo = outGoingDir;
 
     float3 reflectance = hit.baseColor; // Material's RGB diffuse reflectance
 
@@ -1076,9 +1090,26 @@ float3 shadeDiffuse(HitInfo hit) {
 
     float3 f = evaluateLambert(reflectance);
 
-    //wi is where light comes from, wo is light towards camera/viewer
-    //cosine theta is equivalent to the dot of the wi and the normal 
-    float cosine = max(dot(normal, wi), 0);
+    // wi is where light comes from, wo is light towards camera/viewer
+    // cosine theta is equivalent to the dot of the wi and the normal
+    // cosine will be the NdotL(dot between normal and light direction) param
+    
+    float cosine =max(dot(normal, wi), 0.0);
+    float NdotV = max(dot(normal, wo), 0.0);
+
+    if (cosine <= 0.0 || NdotV <= 0.0) {
+        return float3(0.0);
+    }
+
+    float3 H = normalize(wi + wo);
+    float HdotV = clamp(dot(H, wo), 0.0, 1.0);
+    float NdotH = clamp(dot(normal, H), 0.0, 1.0);
+    float NdotL = clamp(dot(normal, wi), 0.0, 1.0);
+
+    float3 fresnel = FresnelSchlick(HdotV, hit.F0);
+    float3 specular = evaluateGGXSpecular(NdotH, NdotV, NdotL, hit.roughness, fresnel);
+    float3 kD = (1.0 - fresnel) * (1.0 - hit.metallic);
+    
 
     float3 shadowOrigin = hit.worldPos + normal * RQ_RAY_EPS;
 
@@ -1087,7 +1118,7 @@ float3 shadeDiffuse(HitInfo hit) {
 
     float visibility = blocked ? 0.0 : 1;
 
-    return f * perpendicularIrradiance * cosine * visibility;
+    return (f * kD + specular) * perpendicularIrradiance * cosine * visibility;
 }
 
 // Compute shader entry point
@@ -1155,13 +1186,16 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         bounceOrigin, bounceDir,
         RQ_RAY_EPS, 10000.0, rngState);
 
-            float3 incoming = bounceHit.hit ? shadeDiffuse(bounceHit) : skyColor(bounceDir);
+            //-bounceDir represents direction back towards the initial hit ie: back along the route to the camera view
+            float3 incoming = bounceHit.hit ? shadeDiffuse(bounceHit, -bounceDir) : skyColor(bounceDir);
 
             reflectedSum += hit.baseColor * incoming;
         }
 
         float3 reflectedAverage = reflectedSum / float(sampleCount);
-        float3 directLight = shadeDiffuse(hit);
+
+        //-rayDir represents the vector toward back toward the camera(wo) from the main hit
+        float3 directLight = shadeDiffuse(hit, -rayDir);
 
         currentRadiance = directLight + reflectedAverage;
 
