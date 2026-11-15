@@ -1083,15 +1083,14 @@ float3 shadeDiffuse(HitInfo hit, float3 outGoingDir) {
 
     float3 wo = outGoingDir;
 
-    float3 reflectance = hit.baseColor; // Material's RGB diffuse reflectance
+    float3 colorReflectance = hit.baseColor; // Material's RGB diffuse reflectance
 
     // Irradiance on a surface facing the incoming hard coded light source
     float3 perpendicularIrradiance = float3(1.0, 1.0, 1.0);
 
-    float3 f = evaluateLambert(reflectance);
 
     // wi is where light comes from, wo is light towards camera/viewer
-    // cosine theta is equivalent to the dot of the wi and the normal
+    // cosine theta is equivalent to the dot of the wi and the normal aka: NdotL
     // cosine will be the NdotL(dot between normal and light direction) param
     
     float cosine =max(dot(normal, wi), 0.0);
@@ -1108,8 +1107,7 @@ float3 shadeDiffuse(HitInfo hit, float3 outGoingDir) {
 
     float3 fresnel = FresnelSchlick(HdotV, hit.F0);
     float3 specular = evaluateGGXSpecular(NdotH, NdotV, NdotL, hit.roughness, fresnel);
-    float3 kD = (1.0 - fresnel) * (1.0 - hit.metallic);
-    
+    float3 disneyDiffuse = evaluateDisneyDiffuse(NdotL, NdotV, HdotV, hit.metallic, hit.roughness, colorReflectance);
 
     float3 shadowOrigin = hit.worldPos + normal * RQ_RAY_EPS;
 
@@ -1118,7 +1116,25 @@ float3 shadeDiffuse(HitInfo hit, float3 outGoingDir) {
 
     float visibility = blocked ? 0.0 : 1;
 
-    return (f * kD + specular) * perpendicularIrradiance * cosine * visibility;
+    return (disneyDiffuse + specular) * perpendicularIrradiance * cosine * visibility;
+}
+
+float3 evaluateDisneyDiffuse(float NdotL, float NdotV, float HdotV, float metallic, float roughness, float3 color)
+{
+    float3 f = evaluateLambert(color);
+    float3 kD = (1.0 - metallic);
+
+    // Fd90 is the first term in the disney diffuse model that keeps the base color but corrects lighting for dimming smooth surfaces or boosting rough
+    // surfaces at grazing angles Fd90 sets the target value for that correction.
+    float FD90 = 0.5 + 2 * roughness * (HdotV * HdotV);
+
+    // Light side correction formula
+    float LSC = 1 + (FD90 - 1) * pow(1 - NdotL, 5);
+    // View side correction formula
+    float VSC = 1 + (FD90 - 1) * pow(1 - NdotV, 5);
+    float3 disney = LSC * VSC * kD;
+
+    return disney*f;
 }
 
 // Compute shader entry point
@@ -1207,7 +1223,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (ubo.historyCounter > 0) {
         float4 rbgHistory = historyImage[pixelCoord];
 
-        // A*N + X / N + 1 Formula for history accumulation average
+        //(A*N + X) / N + 1 Formula for history accumulation average
         currentRadiance = ((rbgHistory.rgb * ubo.historyCounter) + currentRadiance) / (ubo.historyCounter + 1);
     }
 
