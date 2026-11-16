@@ -1075,13 +1075,12 @@ float3 evaluateLambert(float3 reflectance)
     return reflectance / PI;
 }
 
-float3 shadeDiffuse(HitInfo hit, float3 outGoingDir) {
+float3 shadeDiffuse(HitInfo hit, float3 wo) {
     float3 normal = normalize(hit.normal);
 
     // Direction from hit surface toward light
     float3 wi = normalize(float3(0.6, 0.8, 0.0));
 
-    float3 wo = outGoingDir;
 
     float3 colorReflectance = hit.baseColor; // Material's RGB diffuse reflectance
 
@@ -1189,6 +1188,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     if (hit.hit) {
         const uint sampleCount = 4;
+        float NdotV = max(dot(hit.normal, -rayDir), 0.0);
         float3 reflectedSum = float3(0.0);
 
         float3 bounceOrigin =
@@ -1196,7 +1196,13 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
         for (uint i = 0; i < sampleCount; ++i)
         {
-            float3 bounceDir = sampleDiffuseWorld(hit.normal, rngState);
+            float3 bounceDir = sampleDiffuseWorld(normalize(hit.normal), rngState);
+
+            float cosine = max(dot(hit.normal, bounceDir), 0.0);
+
+            if (cosine <= 0.0 || NdotV <= 0.0) {
+                continue;
+            }
 
             HitInfo bounceHit = traceRay(
         bounceOrigin, bounceDir,
@@ -1205,7 +1211,16 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             //-bounceDir represents direction back towards the initial hit ie: back along the route to the camera view
             float3 incoming = bounceHit.hit ? shadeDiffuse(bounceHit, -bounceDir) : skyColor(bounceDir);
 
-            reflectedSum += hit.baseColor * incoming;
+
+
+            float3 H = normalize(-rayDir + bounceDir);
+
+            float NdotL = dot(normalize(hit.normal), bounceDir);
+            float HdotV = dot(H, -rayDir);
+
+            float3 disneyBounce = evaluateDisneyDiffuse(NdotL, NdotV, HdotV, hit.metallic, hit.roughness, hit.baseColor);
+
+            reflectedSum += disneyBounce*PI * incoming;
         }
 
         float3 reflectedAverage = reflectedSum / float(sampleCount);
@@ -1220,10 +1235,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         currentRadiance = float3(skyColor(rayDir));
     }
 
+    //History accumulation 
     if (ubo.historyCounter > 0) {
         float4 rbgHistory = historyImage[pixelCoord];
 
-        //(A*N + X) / N + 1 Formula for history accumulation average
+        //(A*N + X) / N + 1 Formula for history accumulation average. A = current average, N = frame number, X is new avg.
         currentRadiance = ((rbgHistory.rgb * ubo.historyCounter) + currentRadiance) / (ubo.historyCounter + 1);
     }
 
